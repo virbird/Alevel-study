@@ -1,0 +1,9 @@
+{
+  "id": "alevel-study-coach",
+  "name": "A-Level Study Coach",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "A-Level 学习辅助教练：按需答疑、失分记录、弱点发现与复习提醒。数据全部保存在 vault 内。",
+  "author": "",
+  "isDesktopOnly": false
+}
