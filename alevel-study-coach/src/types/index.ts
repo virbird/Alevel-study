@@ -103,8 +103,12 @@ export interface OnboardError {
   code?: string;
   desc?: string;
   fix?: string;
-  /** specific = 有明确考点，进主表；vague = 模糊印象，进弱点印象清单待验证 */
-  specificity?: 'specific' | 'vague';
+  /**
+   * specific   = 具体某题犯了具体错，进主表（变式题可消除）
+   * practice   = 题型/作答习惯倾向（成功率不高/容易口语化），进练习侧重
+   * impression = 科目级模糊印象（说不出考点），进弱点印象待验证
+   */
+  specificity?: 'specific' | 'practice' | 'impression';
 }
 
 export interface OnboardResult {

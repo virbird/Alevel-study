@@ -15,9 +15,11 @@ const EXTRACT_PROMPT = `你是学习记录工具的录入助手。请把学生�
 3. subject 用：Maths / Physics / Chem / CS / Econ。
 4. code 从下面选一个：M,A,U,S,D,P,H,G,T,E,C,R,K,X,Z,DV,CL,LK；CS 另有 L,V,N,B,Q,O；Chem 另有 F,W,J,Y,I；Econ 另有 CR,EV,DG,CX,DF,CF。不确定就填空字符串。
 5. errors 的 topic 用英文考点名，不确定就填空字符串。
-6. 【重要】每条 error 必须判断 specificity：
-   - specific：学生说到了具体考点、题型或某次具体错误（能写出明确 topic），这种进失分记录本；
-   - vague：只是对某科或某个大章节的模糊感觉（如"力学比较弱""化学感觉不行"），写不出具体考点，topic 留空。`;
+6. 【重要】每条 error 必须判断 specificity，三选一：
+   - specific：做了具体某道题、犯了具体的错（哪步错、算错、漏条件），能指出具体错误行为，进失分记录本；
+   - practice：对某类题型或作答习惯的倾向描述（如"实验题成功率不高""问答题容易口语化""这个考点需要更多练习"），
+     即使提到了考点名，只要描述的是成功率/习惯/倾向而非具体某次错误，就是 practice；
+   - impression：对某科或某个大章节的模糊感觉（如"力学比较弱""化学感觉不行"），完全说不出考点。`;
 
 /**
  * 冷启动引导：用自己的话描述现状 → AI 提取 → 逐条确认入库。
@@ -77,7 +79,7 @@ export class OnboardModal extends Modal {
 
   private renderCandidates(el: HTMLElement, c: OnboardResult, source: string): void {
     el.empty();
-    const checks: { box: HTMLInputElement; kind: 'progress' | 'error' | 'impression'; idx: number }[] = [];
+    const checks: { box: HTMLInputElement; kind: 'progress' | 'error' | 'impression' | 'practice'; idx: number }[] = [];
 
     if (c.progress?.length) {
       el.createEl('h4', { text: `学习进展（${c.progress.length} 条，写入 记录/进展/）` });
@@ -90,16 +92,27 @@ export class OnboardModal extends Modal {
       });
     }
     if (c.errors?.length) {
-      const specific = c.errors.filter(e => e.specificity !== 'vague' && (e.topic || e.desc));
-      const vague = c.errors.filter(e => e.specificity === 'vague' || (!e.topic && !e.desc));
+      const specific = c.errors.filter(e => e.specificity === 'specific' && (e.topic || e.desc));
+      const practice = c.errors.filter(e => e.specificity === 'practice');
+      const vague = c.errors.filter(e => e.specificity === 'impression' || (!e.specificity && !e.topic && !e.desc));
       if (specific.length) {
         el.createEl('h4', { text: `具体失分点（${specific.length} 条，写入 error log，复查默认 7 天后）` });
-        specific.forEach((e, i) => {
+        specific.forEach(e => {
           const row = el.createDiv({ cls: 'asc-candidate' });
           const box = row.createEl('input', { type: 'checkbox' });
           box.checked = true;
           row.createSpan({ text: `【${e.subject ?? '?'}】${e.topic || '(考点待定)'} · ${e.code || '(代码待定)'} · ${e.desc ?? ''}` });
           checks.push({ box, kind: 'error', idx: c.errors!.indexOf(e) });
+        });
+      }
+      if (practice.length) {
+        el.createEl('h4', { text: `题型/习惯倾向（${practice.length} 条，写入练习侧重，遇到对应题型时教练会加强审查）` });
+        practice.forEach(e => {
+          const row = el.createDiv({ cls: 'asc-candidate' });
+          const box = row.createEl('input', { type: 'checkbox' });
+          box.checked = true;
+          row.createSpan({ text: `【${e.subject ?? '?'}】${e.desc || e.topic || '(无描述)'}` });
+          checks.push({ box, kind: 'practice', idx: c.errors!.indexOf(e) });
         });
       }
       if (vague.length) {
@@ -134,6 +147,12 @@ export class OnboardModal extends Modal {
                   const e = c.errors![ck.idx];
                   if (!e.desc) continue;
                   await this.plugin.weakImpressions.append(e.subject ?? '', e.desc);
+                  saved++;
+                } else if (ck.kind === 'practice') {
+                  const e = c.errors![ck.idx];
+                  const text = e.desc || e.topic;
+                  if (!text) continue;
+                  await this.plugin.practiceFocus.append(e.subject ?? '', text);
                   saved++;
                 } else {
                   const e = c.errors![ck.idx];

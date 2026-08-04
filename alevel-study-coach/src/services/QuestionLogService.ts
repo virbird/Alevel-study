@@ -8,6 +8,48 @@ export const PROGRESS_DIR = `${ROOT}/记录/进展`;
 export const JOURNAL_PATH = `${ROOT}/记录/学习日志.md`;
 export const TERM_LIST_PATH = `${ROOT}/记录/术语清单.md`;
 export const WEAK_IMPRESSIONS_PATH = `${ROOT}/记录/弱点印象.md`;
+export const PRACTICE_FOCUS_PATH = `${ROOT}/记录/练习侧重.md`;
+
+export interface PracticeFocus {
+  date: string;
+  subject: string;
+  desc: string;
+  status: '生效中' | '已缓解';
+}
+
+/**
+ * 练习侧重：题型/作答习惯层面的倾向（「实验题成功率不高」「问答题容易口语化」）。
+ * 与弱点印象的区别：它更具体、可行动——注入教练 prompt 后，遇到对应题型时加强 scrutiny。
+ * 同样不进主表、不进复查队列：无法用变式题判定消除，靠长期作答质量观察缓解。
+ */
+export class PracticeFocusService {
+  constructor(private vault: VaultService) {}
+
+  async append(subject: string, desc: string): Promise<void> {
+    const row = renderRow([todayStr(), subject || '?', desc, '生效中']);
+    await this.vault.append(PRACTICE_FOCUS_PATH, row);
+  }
+
+  async load(): Promise<PracticeFocus[]> {
+    const content = await this.vault.read(PRACTICE_FOCUS_PATH);
+    if (!content) return [];
+    const rows = parseTable(content);
+    if (!rows.length) return [];
+    return rows
+      .filter(r => r.length >= 4 && r[0] !== '日期')
+      .map(r => ({
+        date: r[0],
+        subject: r[1],
+        desc: r[2],
+        status: r[3] === '已缓解' ? '已缓解' : '生效中',
+      }));
+  }
+
+  /** 注入教练 prompt 用：生效中的侧重，最多 8 条 */
+  async activeForInjection(): Promise<PracticeFocus[]> {
+    return (await this.load()).filter(f => f.status === '生效中').slice(-8);
+  }
+}
 
 export interface WeakImpression {
   date: string;

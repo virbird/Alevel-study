@@ -137,6 +137,17 @@ const WEAK_IMPRESSIONS_TEMPLATE = `# 弱点印象
 |------|------|------|--------|------|
 `;
 
+const PRACTICE_FOCUS_TEMPLATE = `# 练习侧重
+
+> 题型/作答习惯层面的倾向（如「实验题成功率不高」「问答题容易口语化」）。
+> 不进 error log 主表、不进复查队列——无法用变式题判定消除，靠长期作答质量观察缓解。
+> 它们会注入教练 prompt：遇到对应题型时，教练会加强相应的审查与训练侧重。
+> 状态：生效中 → 已缓解（连续多次作答未见该倾向后可手动改）。
+
+| 日期 | 科目 | 描述 | 状态 |
+|------|------|------|------|
+`;
+
 /**
  * 负责 StudyCoach/ 目录的创建与种子文件生成。
  * 所有数据文件一旦存在就不会覆盖——用户可自由手改。
@@ -172,6 +183,7 @@ export class VaultService {
       await this.ensureFile(`${ROOT}/记录/提问记录.md`, QUESTION_LOG_TEMPLATE);
       await this.ensureFile(`${ROOT}/记录/学习日志.md`, JOURNAL_TEMPLATE);
       await this.ensureFile(`${ROOT}/记录/弱点印象.md`, WEAK_IMPRESSIONS_TEMPLATE);
+      await this.ensureFile(`${ROOT}/记录/练习侧重.md`, PRACTICE_FOCUS_TEMPLATE);
 
       await this.seedPrompts();
     } catch (e) {

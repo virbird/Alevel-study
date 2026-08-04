@@ -2,7 +2,7 @@
 import { ErrorLogService } from '../src/services/ErrorLogService';
 import type { VaultService } from '../src/services/VaultService';
 import { parseSessionMessages } from '../src/ui/MainView';
-import { WeakImpressionService } from '../src/services/QuestionLogService';
+import { WeakImpressionService, PracticeFocusService } from '../src/services/QuestionLogService';
 
 const SEED = `# Error Log
 
@@ -109,6 +109,20 @@ async function main(): Promise<void> {
   const pending = await wis.pendingForInjection();
   check('待验证印象可注入教练 prompt', pending.length === 1 && pending[0].subject === 'Physics');
   check('弱点印象未进入主表', (await svc.load()).every(e => !e.desc.includes('力学整体')));
+  
+  // 9. 练习侧重：题型/习惯倾向独立存储与注入
+  files['StudyCoach/记录/练习侧重.md'] = [
+    '# 练习侧重', '',
+    '| 日期 | 科目 | 描述 | 状态 |',
+    '|------|------|------|------|',
+  ].join('\n') + '\n';
+  const pfs = new PracticeFocusService(fakeVault);
+  await pfs.append('Econ', '问答题习惯用日常词替代术语，导致丢失分点');
+  const loadedFocus = await pfs.load();
+  check('练习侧重追加并可解析', loadedFocus.length === 1 && loadedFocus[0].status === '生效中');
+  const active = await pfs.activeForInjection();
+  check('生效中侧重可注入', active.length === 1 && active[0].subject === 'Econ');
+  check('练习侧重未进入主表', (await svc.load()).every(e => !e.desc.includes('日常词替代')));
 
   console.log(failed === 0 ? '\n全部通过 ✔' : `\n${failed} 项失败 ✘`);
   process.exit(failed === 0 ? 0 : 1);

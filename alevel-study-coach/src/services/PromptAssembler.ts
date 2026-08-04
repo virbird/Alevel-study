@@ -5,7 +5,7 @@ import { renderRow } from '../utils/markdown';
 import type { VaultService } from './VaultService';
 import type { ProfileService } from './ProfileService';
 import type { ErrorLogService } from './ErrorLogService';
-import type { ProgressService, WeakImpressionService } from './QuestionLogService';
+import type { ProgressService, WeakImpressionService, PracticeFocusService } from './QuestionLogService';
 import { ROOT } from './VaultService';
 
 const TAG_INSTRUCTION = `
@@ -30,6 +30,7 @@ export class PromptAssembler {
     private errorLogService: ErrorLogService,
     private progressService: ProgressService,
     private weakImpressions: WeakImpressionService,
+    private practiceFocus: PracticeFocusService,
   ) {}
 
   meta(key: ModeKey) {
@@ -47,6 +48,7 @@ export class PromptAssembler {
     const unresolved = await this.errorLogService.unresolved();
     const progress = await this.progressService.recentSummary(Object.keys(profile.subjects));
     const impressions = await this.weakImpressions.pendingForInjection();
+    const focuses = await this.practiceFocus.activeForInjection();
 
     const parts: string[] = [template.replace(/\s*$/, '')];
     parts.push('\n════════ 插件注入：学生档案 ════════\n' + this.profileService.formatForInjection(profile));
@@ -71,10 +73,21 @@ export class PromptAssembler {
       );
     }
 
+    if (focuses.length) {
+      const lines = focuses.map(f => `- 【${f.subject}】${f.desc}`);
+      parts.push(
+        '\n════════ 插件注入：练习侧重（学生已确认的题型/作答习惯倾向）════════\n' +
+          lines.join('\n') +
+          '\n使用方式：这些是已确认的习惯性倾向，不是待验证印象。遇到对应题型时主动加强相应审查：' +
+          '例如实验题强化变量控制与误差分析结构、问答题强化英文作答审查与要点数量检查、' +
+          '口语化倾向则严格执行术语拦截三步。结题时优先观察该习惯是否再现，再现则记对应失分代码。',
+      );
+    }
+
     for (const block of extraBlocks) parts.push('\n' + block);
 
     parts.push(TAG_INSTRUCTION);
-    const summary = `模板 ${meta.promptFile} · 未消除 ${unresolved.length} 条 · ${progress ? '含最近进展' : '暂无进展记录'}${impressions.length ? ` · 待验证弱项 ${impressions.length} 条` : ''}${extraBlocks.length ? ` · 引用文档 ${extraBlocks.length} 份` : ''}`;
+    const summary = `模板 ${meta.promptFile} · 未消除 ${unresolved.length} 条 · ${progress ? '含最近进展' : '暂无进展记录'}${impressions.length ? ` · 待验证弱项 ${impressions.length} 条` : ''}${focuses.length ? ` · 练习侧重 ${focuses.length} 条` : ''}${extraBlocks.length ? ` · 引用文档 ${extraBlocks.length} 份` : ''}`;
     return { prompt: parts.join('\n'), summary };
   }
 
