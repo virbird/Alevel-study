@@ -7,7 +7,7 @@ import { ProgressService, WeakImpressionService, PracticeFocusService, QuestionL
 import { StatsService } from '../../src/services/StatsService';
 import { InsightEngine } from '../../src/services/InsightEngine';
 import { extractJson } from '../../src/llm/LlmClient';
-import { parseSessionMessages } from '../../src/ui/MainView';
+import { parseSessionMessages, thinkAnnotation } from '../../src/ui/MainView';
 import { seedLog } from '../unit/errorlog.test';
 import { todayStr } from '../../src/utils/date';
 import type { SessionTag } from '../../src/types';
@@ -90,4 +90,10 @@ export async function run(): Promise<void> {
   // 8. 增量存档不重复：savedCount 语义（模拟）
   const before = (v.files['StudyCoach/会话/2026-08-04-150000-Physics.md'].match(/## 学生/g) ?? []).length;
   eq('存档学生消息数', before, 2);
+
+  // 9. 独立思考凭证：计时跑满后的消息标注（供教练按思维题模式验证）
+  const ann = thinkAnnotation(15);
+  check('凭证含时长与门槛语义', ann.includes('15 分钟') && ann.includes('门槛'));
+  check('凭证以插件注开头，与正文分隔', ann.startsWith('\n\n[插件注'));
+  eq('凭证时长可变', thinkAnnotation(20).includes('20 分钟'), true);
 }

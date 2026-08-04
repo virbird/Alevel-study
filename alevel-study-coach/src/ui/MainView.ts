@@ -40,8 +40,11 @@ export class MainView extends ItemView {
   private savedCount = 0;
   /** 本轮会话引用的文档 */
   private attachments: { path: string; name: string }[] = [];
-  /** 独立思考计时器（提示词门槛的产品硬约束） */
+  /** 独立思考计时器（提示词门槛的产品硬约束，仅会话内可用） */
   private timerDeadline = 0;
+  private timerMinutes = 0;
+  /** 计时跑满后的「思考凭证」：下一条消息携带标注后清零 */
+  private thinkCredit = 0;
   private timerInterval: number | null = null;
 
   constructor(leaf: WorkspaceLeaf, private plugin: ALevelStudyCoachPlugin) {
@@ -216,7 +219,7 @@ export class MainView extends ItemView {
     bar.createEl('button', { text: '存档', cls: 'asc-btn' }).addEventListener('click', () => void this.archiveIfNeeded(true));
     bar.createEl('button', { text: '历史', cls: 'asc-btn' }).addEventListener('click', () => this.openHistory());
     bar.createEl('button', { text: '＋文档', cls: 'asc-btn' }).addEventListener('click', () => this.openAttachPicker());
-    bar.createEl('button', { text: '⏱ 独立思考', cls: 'asc-btn' }).addEventListener('click', () => void this.startTimer());
+    bar.createEl('button', { text: '⏱ 独立思考', cls: 'asc-btn' + (this.systemPrompt ? '' : ' asc-btn-disabled') }).addEventListener('click', () => void this.startTimer());
 
     if (this.timerDeadline > Date.now()) {
       const cd = el.createDiv({ cls: 'asc-timer' });
@@ -225,13 +228,16 @@ export class MainView extends ItemView {
         this.timerInterval = window.setInterval(() => {
           if (this.timerDeadline <= Date.now()) {
             if (this.timerInterval !== null) { window.clearInterval(this.timerInterval); this.timerInterval = null; }
-            new Notice('⏱ 时间到了，现在可以向教练求助');
+            this.thinkCredit = this.timerMinutes;
+            new Notice(`⏱ ${this.timerMinutes} 分钟独立思考完成，下一条消息会带上思考凭证`);
             this.render();
           } else {
             cd.setText(`⏱ 独立思考中，距求助门槛还有 ${fmtRemain(this.timerDeadline - Date.now())}——卡住本身就是训练内容`);
           }
         }, 1000);
       }
+    } else if (this.thinkCredit > 0) {
+      el.createDiv({ cls: 'asc-timer' }).setText(`✓ 已完成 ${this.thinkCredit} 分钟独立思考，下一条消息会自动标注给教练`);
     }
 
     if (this.attachments.length) {
@@ -269,6 +275,10 @@ export class MainView extends ItemView {
     const doSend = () => {
       const text = input.value.trim();
       if (!text || this.busy || !this.systemPrompt) return;
+      if (this.timerDeadline > Date.now()) {
+        new Notice(`⏱ 还没到求助时间（剩 ${fmtRemain(this.timerDeadline - Date.now())}）`);
+        return;
+      }
       input.value = '';
       void this.send(text);
     };
@@ -278,16 +288,21 @@ export class MainView extends ItemView {
     });
   }
 
-  /** 独立思考计时器：按档案门槛（IG 主导 15 / AS 主导 20 分钟）倒计时，未到门槛拦截发送 */
+  /** 独立思考计时器：会话内能力，按档案门槛倒计时；跑满后给下一条消息带思考凭证 */
   private async startTimer(): Promise<void> {
+    if (!this.systemPrompt) {
+      new Notice('先点「新会话」开始——独立思考计时只在会话内有意义（针对你正在做的题）');
+      return;
+    }
     if (this.timerDeadline > Date.now()) {
       new Notice(`⏱ 已在计时，剩 ${fmtRemain(this.timerDeadline - Date.now())}`);
       return;
     }
     const profile = await this.plugin.profiles.load();
     const minutes = profile.independent_minutes || 15;
+    this.timerMinutes = minutes;
     this.timerDeadline = Date.now() + minutes * 60000;
-    new Notice(`⏱ 开始独立思考，${minutes} 分钟后可求助`);
+    new Notice(`⏱ 开始独立思考，${minutes} 分钟内不能求助——先把试过的方向都列出来`);
     this.render();
   }
 
@@ -296,8 +311,10 @@ export class MainView extends ItemView {
       new Notice('请先在设置里配置 LLM（接口类型 / Base URL / Key / 模型）');
       return;
     }
-    // 防漏数据：开新会话前先把上一轮的未存档内容落盘
+    // 防漏数据：开新会话前先把上一轮的未存档内容落盘；新题新计时，取消旧计时与凭证
     await this.archiveIfNeeded(false);
+    this.timerDeadline = 0;
+    this.thinkCredit = 0;
     await this.rebuildSystemPrompt();
     if (!this.systemPrompt) return;
     this.sessionId = `${todayStr()}-${timeStr()}`;
@@ -332,7 +349,10 @@ export class MainView extends ItemView {
       new Notice(`⏱ 还没到求助时间（剩 ${fmtRemain(this.timerDeadline - Date.now())}）。提示词约定：先独立思考满门槛再求助。`);
       return;
     }
-    this.messages.push({ role: 'user', content: text });
+    // 思考凭证：计时跑满后的第一条消息带上标注，供教练按思维题模式验证
+    const content = this.thinkCredit > 0 ? text + thinkAnnotation(this.thinkCredit) : text;
+    this.thinkCredit = 0;
+    this.messages.push({ role: 'user', content });
     this.busy = true;
     this.render();
     try {
@@ -582,6 +602,11 @@ function timeStr(): string {
 function fmtRemain(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
   return `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
+}
+
+/** 思考凭证标注（导出供测试）：让教练知道学生真想满了门槛，而非口头声称 */
+export function thinkAnnotation(minutes: number): string {
+  return `\n\n[插件注：该生刚由插件计时完成 ${minutes} 分钟独立思考，达到卡住耐受力门槛，请把试过的方向列出来再继续。]`;
 }
 
 function shuffle<T>(arr: T[]): T[] {

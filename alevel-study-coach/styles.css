@@ -111,6 +111,10 @@
   background: var(--interactive-hover);
 }
 
+.asc-btn-disabled {
+  opacity: 0.45;
+}
+
 .asc-btn-small {
   padding: 2px 8px;
   font-size: 12px;
