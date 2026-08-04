@@ -10,6 +10,8 @@ import { OnboardModal } from './OnboardModal';
 import { CaptureModal } from './CaptureModal';
 import { SessionHistoryModal, AttachPickerModal } from './PickerModals';
 import { SuggestionModal, DrillModal } from './InsightModals';
+import { NewEssayModal } from './IeltsModals';
+import { EXPR_LIB_PATH } from '../services/IeltsService';
 import type { TermEntry } from '../services/TermService';
 
 export const VIEW_TYPE = 'alevel-study-coach-view';
@@ -21,7 +23,7 @@ const SUBJECT_TO_MODE: Record<string, ModeKey> = {
 
 const CLOSE_PROMPT = '现在结题。请按提示词完成结题流程的剩余环节（包括 log 行），并在回复末尾输出会话标签 JSON。';
 
-type TabKey = 'home' | 'coach' | 'records' | 'review';
+type TabKey = 'home' | 'coach' | 'records' | 'review' | 'ielts';
 
 export class MainView extends ItemView {
   private tab: TabKey = 'home';
@@ -90,6 +92,7 @@ export class MainView extends ItemView {
       { key: 'coach', label: '教练' },
       { key: 'records', label: '记录' },
       { key: 'review', label: '复习' },
+      { key: 'ielts', label: '雅思' },
     ];
     for (const d of defs) {
       const btn = tabs.createEl('button', { text: d.label, cls: 'asc-tab' + (this.tab === d.key ? ' is-active' : '') });
@@ -102,6 +105,74 @@ export class MainView extends ItemView {
       case 'coach': this.renderCoach(); break;
       case 'records': void this.renderRecords(); break;
       case 'review': void this.renderReview(); break;
+      case 'ielts': void this.renderIelts(); break;
+    }
+  }
+
+  private openFile(path: string): void {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (file instanceof TFile) void this.app.workspace.getLeaf(true).openFile(file);
+  }
+
+  // ─── 雅思页签 ─────────────────────────────────────
+  private async renderIelts(): Promise<void> {
+    const el = this.bodyEl;
+    const profile = await this.plugin.profiles.load();
+
+    // 1. 分数趋势与短板
+    const scores = await this.plugin.ielts.loadScores();
+    const sc = el.createDiv({ cls: 'asc-card' });
+    sc.createEl('div', { text: `雅思写作进展（目标 ${profile.ielts.target}，主攻 ${profile.ielts.focus}）`, cls: 'asc-card-title' });
+    if (!scores.length) {
+      sc.createEl('div', { text: '还没有批改记录：命令「雅思：新建作文笔记」→ 粘贴作文 →「批改当前作文」。', cls: 'asc-hint' });
+    } else {
+      for (const s of scores.slice(-6).reverse()) {
+        const dims = `TR ${s.tr ?? '-'} / CC ${s.cc ?? '-'} / LR ${s.lr ?? '-'} / GRA ${s.gra ?? '-'}`;
+        sc.createEl('div', { text: `${s.date} · Task${s.task} · 总分 ${s.overall ?? '-'}（${dims}）`, cls: 'asc-row' });
+      }
+      const latest = scores[scores.length - 1];
+      if (latest.overall !== null) {
+        const gap = profile.ielts.target - latest.overall;
+        sc.createEl('div', {
+          text: gap > 0 ? `最近 ${latest.overall}，距目标还差 ${gap.toFixed(1)}` : `最近 ${latest.overall}，已达目标 🎉`,
+          cls: 'asc-row asc-strong',
+        });
+      }
+      const weak = this.plugin.ielts.weakestDimension(latest);
+      if (weak) sc.createEl('div', { text: `短板维度：${weak}——下一篇作文可以重点练这里`, cls: 'asc-row asc-muted' });
+    }
+
+    // 2. 与 A-Level 联动（表达码与 LR/GRA 同根）
+    const entries = await this.plugin.errorLog.load();
+    const codes = (await this.plugin.engine.codeCounts(entries, 14)).filter(c => ['DV', 'CL', 'LK', 'E'].includes(c.code));
+    const lc = el.createDiv({ cls: 'asc-card' });
+    lc.createEl('div', { text: '与 A-Level 联动（练术语 = 练雅思）', cls: 'asc-card-title' });
+    lc.createEl('div', {
+      text: codes.length ? `近两周学科表达类失分码：${codes.map(c => `${c.code}×${c.count}`).join('  ')}` : '近两周无表达类失分码',
+      cls: 'asc-row',
+    });
+    lc.createEl('div', { text: 'DV/CL/LK/E 与雅思 LR/GRA 是同一能力：学科的术语拦截与链条训练，同时在练雅思学术表达。', cls: 'asc-hint' });
+
+    // 3. 表达积累库
+    const exprs = await this.plugin.expressions.load();
+    const dueExprs = await this.plugin.expressions.due();
+    const mastered = exprs.filter(r => r.status === '已掌握').length;
+    const ec = el.createDiv({ cls: 'asc-card' });
+    ec.createEl('div', { text: `表达积累库：共 ${exprs.length} · 已掌握 ${mastered} · 到期抽查 ${dueExprs.length}`, cls: 'asc-card-title' });
+    const ebtns = ec.createDiv({ cls: 'asc-row' });
+    ebtns.createEl('button', { text: `表达造句抽查（${dueExprs.length}）`, cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.plugin.startExpressionDrill());
+    ebtns.createEl('button', { text: '打开积累库', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => this.openFile(EXPR_LIB_PATH));
+
+    // 4. 作文工作流入口
+    const wc = el.createDiv({ cls: 'asc-card' });
+    wc.createEl('div', { text: '作文工作流', cls: 'asc-card-title' });
+    wc.createEl('div', { text: '新建作文笔记 → 把作文粘到「## 原文」→ 批改当前作文：六段输出回填笔记，分数入库，高分表达进积累库。', cls: 'asc-hint' });
+    const wbtns = wc.createDiv({ cls: 'asc-row' });
+    wbtns.createEl('button', { text: '新建作文笔记', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => new NewEssayModal(this.app, this.plugin).open());
+    wbtns.createEl('button', { text: '批改当前作文', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.plugin.gradeActiveEssay());
+    if (scores.length) {
+      const last = scores[scores.length - 1].file;
+      wbtns.createEl('button', { text: '打开最近一篇', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => this.openFile(last));
     }
   }
 

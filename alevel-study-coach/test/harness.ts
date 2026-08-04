@@ -59,8 +59,11 @@ export class FakeVault {
   }
 
   async append(p: string, c: string): Promise<void> {
-    const existing = this.files[p];
-    this.files[p] = existing === undefined ? c : existing.endsWith('\n') ? existing + c : existing + '\n' + c;
+    // 与生产 VaultService.append 语义一致：保证行间分隔与尾换行
+    const existing = this.files[p] ?? '';
+    const sep = existing === '' || existing.endsWith('\n') ? '' : '\n';
+    const suffix = c.endsWith('\n') ? '' : '\n';
+    this.files[p] = existing + sep + c + suffix;
   }
 
   async hasConflict(): Promise<boolean> {

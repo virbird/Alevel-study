@@ -10,10 +10,13 @@ import { InsightEngine } from './services/InsightEngine';
 import { SuggestionService } from './services/SuggestionService';
 import { StatsService } from './services/StatsService';
 import { TermListService } from './services/TermService';
+import { IeltsService } from './services/IeltsService';
+import { ExpressionService } from './services/ExpressionService';
 import { MainView, VIEW_TYPE } from './ui/MainView';
 import { StudyCoachSettingTab } from './ui/SettingsTab';
 import { OnboardModal } from './ui/OnboardModal';
 import { CaptureModal } from './ui/CaptureModal';
+import { NewEssayModal, ExpressionDrillModal } from './ui/IeltsModals';
 import { todayStr, daysBetween } from './utils/date';
 
 export interface CoachPluginSettings {
@@ -45,6 +48,8 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   engine!: InsightEngine;
   suggestions!: SuggestionService;
   stats!: StatsService;
+  ielts!: IeltsService;
+  expressions!: ExpressionService;
   assembler!: PromptAssembler;
   private statusBarEl!: HTMLElement;
 
@@ -59,6 +64,8 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     this.weakImpressions = new WeakImpressionService(this.vaultService);
     this.practiceFocus = new PracticeFocusService(this.vaultService);
     this.terms = new TermListService(this.vaultService);
+    this.ielts = new IeltsService(this.vaultService);
+    this.expressions = new ExpressionService(this.vaultService);
     this.engine = new InsightEngine(this.vaultService);
     this.suggestions = new SuggestionService(this.vaultService);
     this.stats = new StatsService(this.vaultService, this.engine);
@@ -74,6 +81,9 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     this.addCommand({ id: 'open-coach', name: '打开学习教练', callback: () => this.activateView() });
     this.addCommand({ id: 'quick-capture', name: '随手记一条', callback: () => new CaptureModal(this.app, this).open() });
     this.addCommand({ id: 'onboarding', name: '冷启动：记录当前学习状况', callback: () => new OnboardModal(this.app, this).open() });
+    this.addCommand({ id: 'ielts-new-essay', name: '雅思：新建作文笔记', callback: () => new NewEssayModal(this.app, this).open() });
+    this.addCommand({ id: 'ielts-grade', name: '雅思：批改当前作文', callback: () => void this.gradeActiveEssay() });
+    this.addCommand({ id: 'ielts-expr-drill', name: '雅思：表达造句抽查', callback: () => void this.startExpressionDrill() });
 
     this.addSettingTab(new StudyCoachSettingTab(this.app, this));
 
@@ -171,6 +181,45 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     } catch {
       // 分析失败不阻塞主功能
     }
+  }
+
+  /** 批改当前打开的作文笔记：六段输出回填 + 分数入库 + 表达进积累库 */
+  async gradeActiveEssay(): Promise<void> {
+    const file = this.app.workspace.getActiveFile();
+    if (!file || !file.path.startsWith('StudyCoach/雅思/作文/')) {
+      new Notice('请先打开 雅思/作文/ 下的作文笔记（或用命令「雅思：新建作文笔记」）');
+      return;
+    }
+    if (!this.llm.configured) {
+      new Notice('请先在设置里配置 LLM');
+      return;
+    }
+    new Notice('批改中……六段结构化输出约需几十秒');
+    try {
+      const result = await this.ielts.gradeEssay(file.path, this.llm);
+      const added = await this.expressions.appendAll(result.expressions, file.basename);
+      const s = result.scores;
+      new Notice(
+        `批改完成${s.overall !== null ? `：预估总分 ${s.overall}` : ''}${added ? `，${added} 条高分表达进积累库` : ''}`,
+        10000,
+      );
+    } catch (e) {
+      new Notice(`批改失败：${e instanceof Error ? e.message : String(e)}`, 10000);
+    }
+  }
+
+  /** 表达造句抽查：到期表达入队 */
+  async startExpressionDrill(): Promise<void> {
+    if (!this.llm.configured) {
+      new Notice('请先在设置里配置 LLM');
+      return;
+    }
+    const due = await this.expressions.due();
+    if (!due.length) {
+      new Notice('没有到期表达——批改作文会自动积累，或在表达积累库手动添加');
+      return;
+    }
+    new ExpressionDrillModal(this.app, this, due).open();
   }
 }
 

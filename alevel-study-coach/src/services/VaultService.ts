@@ -154,6 +154,16 @@ const STATS_TEMPLATE = `# 统计分析
 > 本期专项会注入教练 prompt；手动编辑下方区块同样生效。
 `;
 
+const EXPR_LIB_TEMPLATE = `# 表达积累库
+
+> 雅思作文批改后自动提取的高分表达（也可手动添加）。
+> 间隔调度（SM-2 简化）：1 → 3 → 7 → 14 → 30 → 60 天，到期用造句抽查验证，通过升档，不过重置。
+> 间隔档位到顶且再次通过 → 已掌握。与学科 DV/CL 训练同根：练表达就是练雅思 LR/GRA。
+
+| 表达 | 类型 | 来源 | 日期 | 间隔 | 下次 | 状态 |
+|------|------|------|------|------|------|------|
+`;
+
 /**
  * 负责 StudyCoach/ 目录的创建与种子文件生成。
  * 所有数据文件一旦存在就不会覆盖——用户可自由手改。
@@ -183,6 +193,8 @@ export class VaultService {
       await this.ensureFolder(ROOT);
       await this.ensureFolder(`${ROOT}/记录`);
       await this.ensureFolder(`${ROOT}/记录/进展`);
+      await this.ensureFolder(`${ROOT}/雅思`);
+      await this.ensureFolder(`${ROOT}/雅思/作文`);
       await this.ensureFolder(`${ROOT}/建议`);
       await this.ensureFolder(`${ROOT}/会话`);
       await this.ensureFolder(`${ROOT}/prompts`);
@@ -196,6 +208,7 @@ export class VaultService {
       await this.ensureFile(`${ROOT}/记录/弱点印象.md`, WEAK_IMPRESSIONS_TEMPLATE);
       await this.ensureFile(`${ROOT}/记录/练习侧重.md`, PRACTICE_FOCUS_TEMPLATE);
       await this.ensureFile(`${ROOT}/记录/统计分析.md`, STATS_TEMPLATE);
+      await this.ensureFile(`${ROOT}/雅思/表达积累库.md`, EXPR_LIB_TEMPLATE);
 
       await this.seedPrompts();
     } catch (e) {
@@ -238,11 +251,11 @@ export class VaultService {
 
   async append(path: string, content: string): Promise<void> {
     const existing = await this.read(path);
-    if (existing === null) {
-      await this.write(path, content);
-      return;
-    }
-    await this.write(path, existing.endsWith('\n') ? existing + content : existing + '\n' + content);
+    const base = existing ?? '';
+    // 统一换行语义：始终保证行间分隔与文件尾换行，避免行粘连（编辑器/同步工具友好）
+    const sep = base === '' || base.endsWith('\n') ? '' : '\n';
+    const suffix = content.endsWith('\n') ? '' : '\n';
+    await this.write(path, base + sep + content + suffix);
   }
 
   /** 检测同步冲突标记，提示用户而不是覆盖 */
