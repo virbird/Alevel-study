@@ -9,6 +9,8 @@ import { ROOT } from '../services/VaultService';
 import { OnboardModal } from './OnboardModal';
 import { CaptureModal } from './CaptureModal';
 import { SessionHistoryModal, AttachPickerModal } from './PickerModals';
+import { SuggestionModal, DrillModal } from './InsightModals';
+import type { TermEntry } from '../services/TermService';
 
 export const VIEW_TYPE = 'alevel-study-coach-view';
 
@@ -38,6 +40,9 @@ export class MainView extends ItemView {
   private savedCount = 0;
   /** 本轮会话引用的文档 */
   private attachments: { path: string; name: string }[] = [];
+  /** 独立思考计时器（提示词门槛的产品硬约束） */
+  private timerDeadline = 0;
+  private timerInterval: number | null = null;
 
   constructor(leaf: WorkspaceLeaf, private plugin: ALevelStudyCoachPlugin) {
     super(leaf);
@@ -55,6 +60,10 @@ export class MainView extends ItemView {
   async onClose(): Promise<void> {
     // 防止漏数据：关闭视图时把未存档的消息自动落盘
     await this.archiveIfNeeded(false);
+    if (this.timerInterval !== null) {
+      window.clearInterval(this.timerInterval);
+      this.timerInterval = null;
+    }
     this.containerEl.empty();
   }
 
@@ -86,7 +95,7 @@ export class MainView extends ItemView {
 
     this.bodyEl = root.createDiv({ cls: 'asc-body' });
     switch (this.tab) {
-      case 'home': void this.renderHome(); break;
+      case 'home': void this.renderDashboard(); break;
       case 'coach': this.renderCoach(); break;
       case 'records': void this.renderRecords(); break;
       case 'review': void this.renderReview(); break;
@@ -94,27 +103,100 @@ export class MainView extends ItemView {
   }
 
   // ─── 首页 ────────────────────────────────────────────────
-  private async renderHome(): Promise<void> {
+  private async renderDashboard(): Promise<void> {
     const el = this.bodyEl;
-    const profile = await this.plugin.profiles.load();
-    const unresolved = await this.plugin.errorLog.unresolved();
-    const due = await this.plugin.errorLog.dueEntries();
+    const entries = await this.plugin.errorLog.load();
+    const pending = (await this.plugin.suggestions.loadAll()).filter(s => s.status === '待处理');
 
-    const card = el.createDiv({ cls: 'asc-card' });
-    card.createEl('div', { text: `阶段：${profile.stage} ｜ 雅思目标：${profile.ielts.target}（${profile.ielts.focus}）`, cls: 'asc-card-title' });
+    // 1. 建议卡片（有才显示，不打断不强推）
+    if (pending.length) {
+      el.createEl('div', { text: `📌 弱点信号（${pending.length} 张待处理建议卡片）`, cls: 'asc-card-title' });
+      for (const s of pending.slice(0, 5)) {
+        const card = el.createDiv({ cls: 'asc-card asc-suggest-card' });
+        card.createEl('div', { text: s.title, cls: 'asc-card-title' });
+        card.createEl('div', { text: `${s.kind} · ${s.created}`, cls: 'asc-muted' });
+        const btns = card.createDiv({ cls: 'asc-row' });
+        btns.createEl('button', { text: '看建议', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => {
+          new SuggestionModal(this.app, this.plugin, s, () => this.render()).open();
+        });
+        btns.createEl('button', { text: '不准确', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
+          const note = window.prompt('哪里判断得不准确？') ?? '';
+          await this.plugin.suggestions.setStatus(s.file, '不准确', note || undefined);
+          this.render();
+        });
+      }
+    } else {
+      el.createDiv({ text: '暂无待处理的建议卡片——弱点信号达到阈值时会自动出现在这里。', cls: 'asc-hint' });
+    }
+
+    // 2. 弱点雷达（近 14 天，纯本地统计）
+    const radar = await this.plugin.engine.radar(entries, 14);
+    const rc = el.createDiv({ cls: 'asc-card' });
+    rc.createEl('div', { text: `弱点雷达（近 ${radar.windowDays} 天）`, cls: 'asc-card-title' });
+    rc.createEl('div', {
+      text: `未消除失分点 ${radar.unresolvedCount} │ 待复查 ${radar.dueCount}`,
+      cls: 'asc-row asc-strong',
+    });
+    if (radar.topicHeat.length) {
+      rc.createEl('div', { text: '提问热点：' + radar.topicHeat.map(h => `${h.topic} ×${h.count}`).join(' · '), cls: 'asc-row' });
+    }
+    if (radar.codeCounts.length) {
+      rc.createEl('div', {
+        text: '失分码：' + radar.codeCounts.map(c => `${c.code}${'▮'.repeat(Math.min(c.count, 8))}${c.count}`).join('  '),
+        cls: 'asc-row',
+      });
+    }
+    if (radar.confusionDist.length) {
+      rc.createEl('div', { text: '困惑类型：' + radar.confusionDist.map(c => `${c.confusion} ×${c.count}`).join(' · '), cls: 'asc-row' });
+    }
+    if (!radar.topicHeat.length && !radar.codeCounts.length) {
+      rc.createEl('div', { text: '近两周数据还太少——每次结题都会自动积累提问记录与失分记录。', cls: 'asc-hint' });
+    }
+
+    // 3. 术语与快捷动作
+    const terms = await this.plugin.terms.load();
+    const unstable = terms.filter(t => t.status !== '已稳定').length;
+    const tc = el.createDiv({ cls: 'asc-card' });
+    tc.createEl('div', { text: `术语清单：待抽查 ${unstable} / 共 ${terms.length}`, cls: 'asc-card-title' });
+    const tbtns = tc.createDiv({ cls: 'asc-row' });
+    tbtns.createEl('button', { text: '发起术语抽查（模式 E）', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.startDrill());
+    tbtns.createEl('button', { text: '重新分析一次', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
+      await this.plugin.runAnalysisCycle();
+      new Notice('分析完成');
+      this.render();
+    });
+
+    // 4. 档案摘要与入口
+    const profile = await this.plugin.profiles.load();
+    const pc = el.createDiv({ cls: 'asc-card' });
+    pc.createEl('div', { text: `阶段 ${profile.stage} ｜ 雅思目标 ${profile.ielts.target}（${profile.ielts.focus}）`, cls: 'asc-card-title' });
     for (const [key, sp] of Object.entries(profile.subjects)) {
       if (!sp) continue;
-      card.createEl('div', { text: `${key}：${sp.level} · ${sp.bias} · 目标 ${sp.target}`, cls: 'asc-row' });
+      pc.createEl('div', { text: `${key}：${sp.level} · ${sp.bias} · 目标 ${sp.target}`, cls: 'asc-row' });
     }
-    card.createEl('div', { cls: 'asc-divider' });
-    card.createEl('div', { text: `未消除失分点：${unresolved.length} 条 ｜ 待复查：${due.length} 条`, cls: 'asc-row asc-strong' });
-
     const hint = el.createDiv({ cls: 'asc-hint' });
-    hint.setText('主学习在线下，需要协助时才来这里：概念不懂、题目卡住、作文批改。每次求助都会被记录，插件据此发现弱点。');
-
+    hint.setText('主学习在线下，需要协助时才去「教练」页签：概念不懂、题目卡住、作文批改。每次求助都会被记录，插件据此发现弱点。');
     const btnRow = el.createDiv({ cls: 'asc-row' });
     btnRow.createEl('button', { text: '📖 开始一次求助', cls: 'asc-btn asc-btn-cta' }).addEventListener('click', () => { this.tab = 'coach'; this.render(); });
-    btnRow.createEl('button', { text: `📌 处理待复查（${due.length}）`, cls: 'asc-btn' }).addEventListener('click', () => { this.tab = 'review'; this.render(); });
+    btnRow.createEl('button', { text: `📌 处理待复查（${radar.dueCount}）`, cls: 'asc-btn' }).addEventListener('click', () => { this.tab = 'review'; this.render(); });
+  }
+
+  /** 术语抽查：未稳定+观察中抽 3 条 + 已稳定随机回抽 1 条（防假性掌握） */
+  private async startDrill(): Promise<void> {
+    if (!this.plugin.llm.configured) {
+      new Notice('请先在设置里配置 LLM');
+      return;
+    }
+    const all = await this.plugin.terms.load();
+    const pool = all.filter(t => t.status !== '已稳定');
+    if (!pool.length) {
+      new Notice('术语清单为空——先在学习中添加术语（随手记或教练结题）');
+      return;
+    }
+    const sampled = shuffle(pool).slice(0, 3);
+    const stable = all.filter(t => t.status === '已稳定');
+    if (stable.length) sampled.push(shuffle(stable)[0]); // 每周随机回抽，防假性掌握
+    new DrillModal(this.app, this.plugin, sampled, () => this.render()).open();
   }
 
   // ─── 教练 ────────────────────────────────────────────────
@@ -134,6 +216,23 @@ export class MainView extends ItemView {
     bar.createEl('button', { text: '存档', cls: 'asc-btn' }).addEventListener('click', () => void this.archiveIfNeeded(true));
     bar.createEl('button', { text: '历史', cls: 'asc-btn' }).addEventListener('click', () => this.openHistory());
     bar.createEl('button', { text: '＋文档', cls: 'asc-btn' }).addEventListener('click', () => this.openAttachPicker());
+    bar.createEl('button', { text: '⏱ 独立思考', cls: 'asc-btn' }).addEventListener('click', () => void this.startTimer());
+
+    if (this.timerDeadline > Date.now()) {
+      const cd = el.createDiv({ cls: 'asc-timer' });
+      cd.setText(`⏱ 独立思考中，距求助门槛还有 ${fmtRemain(this.timerDeadline - Date.now())}——卡住本身就是训练内容`);
+      if (this.timerInterval === null) {
+        this.timerInterval = window.setInterval(() => {
+          if (this.timerDeadline <= Date.now()) {
+            if (this.timerInterval !== null) { window.clearInterval(this.timerInterval); this.timerInterval = null; }
+            new Notice('⏱ 时间到了，现在可以向教练求助');
+            this.render();
+          } else {
+            cd.setText(`⏱ 独立思考中，距求助门槛还有 ${fmtRemain(this.timerDeadline - Date.now())}——卡住本身就是训练内容`);
+          }
+        }, 1000);
+      }
+    }
 
     if (this.attachments.length) {
       const chips = el.createDiv({ cls: 'asc-chips' });
@@ -166,7 +265,7 @@ export class MainView extends ItemView {
     const inputBar = el.createDiv({ cls: 'asc-input-bar' });
     const input = inputBar.createEl('textarea', { attr: { rows: '2', placeholder: this.systemPrompt ? '把题目原文发过来……' : '先点「新会话」开始' } });
     const sendBtn = inputBar.createEl('button', { text: this.busy ? '回复中…' : '发送', cls: 'asc-btn asc-btn-cta' });
-    sendBtn.disabled = this.busy || !this.systemPrompt;
+    sendBtn.disabled = this.busy || !this.systemPrompt || this.timerDeadline > Date.now();
     const doSend = () => {
       const text = input.value.trim();
       if (!text || this.busy || !this.systemPrompt) return;
@@ -177,6 +276,19 @@ export class MainView extends ItemView {
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); doSend(); }
     });
+  }
+
+  /** 独立思考计时器：按档案门槛（IG 主导 15 / AS 主导 20 分钟）倒计时，未到门槛拦截发送 */
+  private async startTimer(): Promise<void> {
+    if (this.timerDeadline > Date.now()) {
+      new Notice(`⏱ 已在计时，剩 ${fmtRemain(this.timerDeadline - Date.now())}`);
+      return;
+    }
+    const profile = await this.plugin.profiles.load();
+    const minutes = profile.independent_minutes || 15;
+    this.timerDeadline = Date.now() + minutes * 60000;
+    new Notice(`⏱ 开始独立思考，${minutes} 分钟后可求助`);
+    this.render();
   }
 
   private async startSession(): Promise<void> {
@@ -216,6 +328,10 @@ export class MainView extends ItemView {
 
   private async send(text: string): Promise<void> {
     if (!this.systemPrompt || this.busy) return;
+    if (this.timerDeadline > Date.now()) {
+      new Notice(`⏱ 还没到求助时间（剩 ${fmtRemain(this.timerDeadline - Date.now())}）。提示词约定：先独立思考满门槛再求助。`);
+      return;
+    }
     this.messages.push({ role: 'user', content: text });
     this.busy = true;
     this.render();
@@ -461,6 +577,20 @@ export class MainView extends ItemView {
 
 function timeStr(): string {
   return new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+}
+
+function fmtRemain(ms: number): string {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
 }
 
 /** 解析会话存档文件为消息序列（## 学生 / ## 教练 分段）；导出供测试 */

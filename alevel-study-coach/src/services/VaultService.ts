@@ -148,12 +148,23 @@ const PRACTICE_FOCUS_TEMPLATE = `# 练习侧重
 |------|------|------|------|
 `;
 
+const STATS_TEMPLATE = `# 统计分析
+
+> 由插件自动维护：提问热点（每周）与复发热点（每两周）统计、本期专项。
+> 本期专项会注入教练 prompt；手动编辑下方区块同样生效。
+`;
+
 /**
  * 负责 StudyCoach/ 目录的创建与种子文件生成。
  * 所有数据文件一旦存在就不会覆盖——用户可自由手改。
  */
 export class VaultService {
   constructor(private app: App, private pluginDir: string) {}
+
+  /** 文件适配器（供需要列目录的服务使用） */
+  get adapter() {
+    return this.app.vault.adapter;
+  }
 
   private async ensureFolder(path: string): Promise<void> {
     const existing = this.app.vault.getAbstractFileByPath(path);
@@ -184,6 +195,7 @@ export class VaultService {
       await this.ensureFile(`${ROOT}/记录/学习日志.md`, JOURNAL_TEMPLATE);
       await this.ensureFile(`${ROOT}/记录/弱点印象.md`, WEAK_IMPRESSIONS_TEMPLATE);
       await this.ensureFile(`${ROOT}/记录/练习侧重.md`, PRACTICE_FOCUS_TEMPLATE);
+      await this.ensureFile(`${ROOT}/记录/统计分析.md`, STATS_TEMPLATE);
 
       await this.seedPrompts();
     } catch (e) {

@@ -85,3 +85,25 @@ export function parseTable(content: string): string[][] {
 export function renderRow(cells: string[]): string {
   return `| ${cells.join(' | ')} |`;
 }
+
+/** 解析建议卡片等文件的简单 frontmatter（支持 status 等字段更新后重写） */
+export interface SimpleFrontmatter {
+  data: Record<string, string>;
+  body: string;
+}
+
+export function parseSimpleFrontmatter(content: string): SimpleFrontmatter {
+  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!m) return { data: {}, body: content };
+  const data: Record<string, string> = {};
+  for (const line of m[1].split(/\r?\n/)) {
+    const kv = line.match(/^([\w-]+):\s*(.*)$/);
+    if (kv) data[kv[1]] = kv[2].replace(/^["']|["']$/g, '');
+  }
+  return { data, body: content.slice(m[0].length) };
+}
+
+export function stringifySimpleFrontmatter(data: Record<string, string>, body: string): string {
+  const lines = Object.entries(data).map(([k, v]) => `${k}: ${v}`);
+  return `---\n${lines.join('\n')}\n---\n${body}`;
+}

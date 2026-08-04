@@ -309,6 +309,37 @@
   color: var(--text-error);
 }
 
+/* 建议卡片与计时器 */
+.asc-suggest-card {
+  border-left: 3px solid var(--text-warning);
+}
+
+.asc-timer {
+  font-size: 12px;
+  color: var(--text-warning);
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.asc-drill {
+  width: min(680px, 92vw);
+}
+
+.asc-drill-chat {
+  max-height: 46vh;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.asc-drill-summary {
+  border-top: 1px dashed var(--background-modifier-border);
+  margin-top: 8px;
+  padding-top: 6px;
+  font-size: 13px;
+}
+
 /* 选择器弹窗列表 */
 .asc-picker-list {
   max-height: 320px;

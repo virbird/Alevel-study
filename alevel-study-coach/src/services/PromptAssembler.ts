@@ -6,6 +6,7 @@ import type { VaultService } from './VaultService';
 import type { ProfileService } from './ProfileService';
 import type { ErrorLogService } from './ErrorLogService';
 import type { ProgressService, WeakImpressionService, PracticeFocusService } from './QuestionLogService';
+import type { StatsService } from './StatsService';
 import { ROOT } from './VaultService';
 
 const TAG_INSTRUCTION = `
@@ -31,6 +32,7 @@ export class PromptAssembler {
     private progressService: ProgressService,
     private weakImpressions: WeakImpressionService,
     private practiceFocus: PracticeFocusService,
+    private statsService: StatsService,
   ) {}
 
   meta(key: ModeKey) {
@@ -61,6 +63,11 @@ export class PromptAssembler {
       parts.push('\n当前没有未消除的失分记录。');
     }
 
+    const focus = await this.statsService.currentFocus();
+    if (focus) {
+      parts.push('\n════════ 插件注入：本期专项（复发热点统计得出，本轮会话全程执行）════════\n' + focus);
+    }
+
     if (progress) parts.push('\n════════ 插件注入：最近学习进展 ════════\n' + progress);
 
     if (impressions.length) {
@@ -87,7 +94,7 @@ export class PromptAssembler {
     for (const block of extraBlocks) parts.push('\n' + block);
 
     parts.push(TAG_INSTRUCTION);
-    const summary = `模板 ${meta.promptFile} · 未消除 ${unresolved.length} 条 · ${progress ? '含最近进展' : '暂无进展记录'}${impressions.length ? ` · 待验证弱项 ${impressions.length} 条` : ''}${focuses.length ? ` · 练习侧重 ${focuses.length} 条` : ''}${extraBlocks.length ? ` · 引用文档 ${extraBlocks.length} 份` : ''}`;
+    const summary = `模板 ${meta.promptFile} · 未消除 ${unresolved.length} 条 · ${progress ? '含最近进展' : '暂无进展记录'}${focus ? ' · 含本期专项' : ''}${impressions.length ? ` · 待验证弱项 ${impressions.length} 条` : ''}${focuses.length ? ` · 练习侧重 ${focuses.length} 条` : ''}${extraBlocks.length ? ` · 引用文档 ${extraBlocks.length} 份` : ''}`;
     return { prompt: parts.join('\n'), summary };
   }
 

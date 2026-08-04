@@ -2,7 +2,12 @@
 import { ErrorLogService } from '../src/services/ErrorLogService';
 import type { VaultService } from '../src/services/VaultService';
 import { parseSessionMessages } from '../src/ui/MainView';
-import { WeakImpressionService, PracticeFocusService } from '../src/services/QuestionLogService';
+import { WeakImpressionService, PracticeFocusService, QUESTION_LOG_PATH, TERM_LIST_PATH } from '../src/services/QuestionLogService';
+import { InsightEngine } from '../src/services/InsightEngine';
+import { StatsService } from '../src/services/StatsService';
+import { TermListService } from '../src/services/TermService';
+import { todayStr } from '../src/utils/date';
+import type { ErrorLogEntry } from '../src/types';
 
 const SEED = `# Error Log
 
@@ -132,6 +137,58 @@ async function main(): Promise<void> {
   const activeEcon = await pfs.activeForInjection('Econ');
   check('按科目过滤：Econ 注入 Econ + 通用', activeEcon.length === 2);
   check('练习侧重未进入主表', (await svc.load()).every(e => !e.desc.includes('日常词替代')));
+
+  // 10. InsightEngine：提问热点聚合与候选生成（阈值）
+  const today = todayStr();
+  files[QUESTION_LOG_PATH] = [
+    '# 提问记录', '',
+    '| 日期 | 科目 | 考点(EN) | 困惑类型 | 求助深度 |',
+    '|------|------|---------|---------|---------|',
+    `| ${today} | Physics | Moments | 卡在某步 | 需要完整引导 |`,
+    `| ${today} | Physics | Moments | 概念不懂 | 需要完整引导 |`,
+    `| ${today} | Physics | Moments | 卡在某步 | 问一句就懂 |`,
+    `| ${today} | Maths | Quadratic inequalities | 会但不熟 | 问一句就懂 |`,
+  ].join('\n') + '\n';
+  const engine = new InsightEngine(fakeVault);
+  const heat = await engine.topicHeat(14);
+  check('提问热点聚合：Moments ×3 排首位', heat.length > 0 && heat[0].topic === 'Moments' && heat[0].count === 3);
+
+  const candHeat = await engine.generateCandidates([], []);
+  check('提问热点 ≥3 次生成候选', candHeat.some(c => c.kind === '提问热点' && c.title.includes('Moments')));
+
+  const recEntry: ErrorLogEntry = {
+    id: '099', date: today, subject: 'Maths', level: 'AS', topic: 'Circle theorems', qtype: '几何证明',
+    code: 'P', desc: '未引用定理', fix: '', stdExpr: '', recurrence: 3, status: '未消除', reviewDate: today,
+  };
+  const candRec = await engine.generateCandidates([recEntry], []);
+  check('复发 ≥3 次生成候选', candRec.some(c => c.kind === '复发热点'));
+  const candFew = await engine.generateCandidates([{ ...recEntry, recurrence: 1 }], []);
+  check('样本不足不出复发候选（宁可不说）', !candFew.some(c => c.kind === '复发热点'));
+
+  // 11. StatsService：区块更新与本期专项
+  files['StudyCoach/记录/统计分析.md'] = '# 统计分析\n';
+  const stats = new StatsService(fakeVault, engine);
+  await stats.runQuestionWeekly();
+  await stats.runHotspotBiweekly([{ ...recEntry, recurrence: 1 }]);
+  const statsContent = files['StudyCoach/记录/统计分析.md'];
+  check('统计分析写入提问热点与复发热点区块', statsContent.includes('## 提问热点') && statsContent.includes('## 复发热点'));
+  const focus = await stats.currentFocus();
+  check('本期专项可读取', focus.includes('自') && focus.length > 10);
+
+  // 12. TermService：模式 E 状态流转
+  files[TERM_LIST_PATH] = [
+    '# 术语清单', '',
+    '| Term (EN) | 科目 | 教材原文定义 | 必要成分拆解 | 我漏掉过的成分 | 我用错的口语词 | 状态 |',
+    '|-----------|------|-------------|-------------|--------------|--------------|------|',
+    '| Opportunity cost | Econ | （拄课本原文） | ①next best ②forgone | 漏 next best | / | 未稳定 |',
+    '| Work done | Physics | （拄课本原文） | ①force ②distance ③方向 | 漏③ | / | 观察中 |',
+  ].join('\n') + '\n';
+  const tls = new TermListService(fakeVault);
+  check('抽查题源不含已稳定', (await tls.drillPool()).length === 2);
+  check('未稳定通过一次 → 观察中', await tls.applyDrillResult('Opportunity cost', true) === '观察中');
+  check('观察中再通过 → 已稳定', await tls.applyDrillResult('Opportunity cost', true) === '已稳定');
+  check('已稳定回抽不过 → 未稳定', await tls.applyDrillResult('Opportunity cost', false) === '未稳定');
+  check('观察中不过 → 未稳定', await tls.applyDrillResult('Work done', false) === '未稳定');
 
   console.log(failed === 0 ? '\n全部通过 ✔' : `\n${failed} 项失败 ✘`);
   process.exit(failed === 0 ? 0 : 1);
