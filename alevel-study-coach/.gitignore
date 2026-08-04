@@ -1,5 +1,5 @@
 node_modules/
 main.js
-test/smoke.js
+test/run.js
 *.map
 .DS_Store

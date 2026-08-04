@@ -21,7 +21,7 @@ function parseYamlLite(text: string): Record<string, unknown> {
     if (nested && currentKey) {
       const obj = result[currentKey];
       if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-        (obj as Record<string, unknown>)[nested[1]] = unquote(nested[2]);
+        (obj as Record<string, unknown>)[nested[1]] = unquote(nested[2]) as string;
       }
       continue;
     }
@@ -61,11 +61,14 @@ function formatScalar(v: unknown): string {
   return `"${String(v).replace(/"/g, '\\"')}"`;
 }
 
-function unquote(s: string): string {
+function unquote(s: string): string | number | boolean {
   const t = s.trim();
   if (t.startsWith('"') && t.endsWith('"') && t.length >= 2) {
     return t.slice(1, -1).replace(/\\"/g, '"');
   }
+  if (t === 'true') return true;
+  if (t === 'false') return false;
+  if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t);
   return t;
 }
 

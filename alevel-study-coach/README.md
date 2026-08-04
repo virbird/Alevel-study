@@ -66,8 +66,19 @@ npm run build
 ```bash
 npm run dev        # esbuild watch
 npm run typecheck  # tsc --noEmit
-npm test           # 规则引擎冒烟测试（解析/入库/复发/到期）
+npm test           # UT + FVT 全量套件（每次改动必须全绿）
 ```
+
+测试体系（test/，基于 FakeVault 隔离 obsidian，node 直接跑）：
+
+| 层 | 范围 |
+|---|---|
+| UT: utils | 日期计算、frontmatter/表格解析、JSON 提取 |
+| UT: errorlog | 解析/入库/复发规则/AI 行容错/冲突保护/到期排序 |
+| UT: services | 档案往返、印象与侧重（含科目过滤）、术语状态流转、提问记录/进展 |
+| UT: insight | 分析引擎阈值、统计区块更新、建议卡片状态机、Prompt 组装与注入 |
+| FVT: session | 完整求助闭环：注入→结题→打标+入库→复发→存档续聊 |
+| FVT: dataflow | 冷启动三层分流、复习流转、分析循环（统计→候选→卡片→反馈） |
 
 ## 已知限制（刻意不做）
 

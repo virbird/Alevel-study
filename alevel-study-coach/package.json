@@ -7,7 +7,7 @@
     "dev": "node esbuild.config.mjs",
     "build": "node esbuild.config.mjs production",
     "typecheck": "tsc --noEmit",
-    "test": "esbuild test/smoke.ts --bundle --platform=node --format=cjs --alias:obsidian=./test/obsidian-stub.ts --outfile=test/smoke.js --log-level=warning && node test/smoke.js"
+    "test": "esbuild test/index.ts --bundle --platform=node --format=cjs --alias:obsidian=./test/obsidian-stub.ts --outfile=test/run.js --log-level=warning && node test/run.js"
   },
   "keywords": [
     "obsidian",

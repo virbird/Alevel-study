@@ -35,8 +35,11 @@ export class SuggestionService {
     for (const c of candidates) {
       if (known.has(c.key)) continue;
       const slug = slugify(c.title);
-      const path = `${SUGGESTION_DIR}/${todayStr()}-${slug}.md`;
-      if (await this.vault.read(path)) continue;
+      // 同一天同标题可能撞路径（如「不准确」后重新生成），自动加序号
+      let path = `${SUGGESTION_DIR}/${todayStr()}-${slug}.md`;
+      for (let n = 2; await this.vault.read(path); n++) {
+        path = `${SUGGESTION_DIR}/${todayStr()}-${slug}-${n}.md`;
+      }
       const fm = { title: c.title, kind: c.kind, key: c.key, status: '待处理', created: todayStr() };
       const body = `\n# ${c.title}\n\n## 证据\n\n${c.evidence.map(e => `- ${e}`).join('\n')}\n`;
       await this.vault.write(path, stringifySimpleFrontmatter(fm, body));
