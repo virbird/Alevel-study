@@ -47,8 +47,8 @@ export class PromptAssembler {
     const profile = await this.profileService.load();
     const unresolved = await this.errorLogService.unresolved();
     const progress = await this.progressService.recentSummary(Object.keys(profile.subjects));
-    const impressions = await this.weakImpressions.pendingForInjection();
-    const focuses = await this.practiceFocus.activeForInjection();
+    const impressions = await this.weakImpressions.pendingForInjection(meta.logName);
+    const focuses = await this.practiceFocus.activeForInjection(meta.logName);
 
     const parts: string[] = [template.replace(/\s*$/, '')];
     parts.push('\n════════ 插件注入：学生档案 ════════\n' + this.profileService.formatForInjection(profile));

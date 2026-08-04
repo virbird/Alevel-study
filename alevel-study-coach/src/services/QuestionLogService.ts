@@ -10,6 +10,18 @@ export const TERM_LIST_PATH = `${ROOT}/记录/术语清单.md`;
 export const WEAK_IMPRESSIONS_PATH = `${ROOT}/记录/弱点印象.md`;
 export const PRACTICE_FOCUS_PATH = `${ROOT}/记录/练习侧重.md`;
 
+/**
+ * 科目过滤规则：注入时只保留当前科目 + 跨科通用条目。
+ * 通用 = 无科目 / '?' / '通用'（跨科习惯如「问答题容易口语化」可把科目写成 通用）。
+ * current 为 undefined（精练模式/雅思）时不过滤，全量注入。
+ */
+function subjectMatches(entrySubject: string, current?: string): boolean {
+  if (!current) return true;
+  const s = entrySubject.trim();
+  if (!s || s === '?' || s === '通用') return true;
+  return s.toLowerCase() === current.toLowerCase();
+}
+
 export interface PracticeFocus {
   date: string;
   subject: string;
@@ -45,9 +57,9 @@ export class PracticeFocusService {
       }));
   }
 
-  /** 注入教练 prompt 用：生效中的侧重，最多 8 条 */
-  async activeForInjection(): Promise<PracticeFocus[]> {
-    return (await this.load()).filter(f => f.status === '生效中').slice(-8);
+  /** 注入教练 prompt 用：生效中的侧重，按科目过滤，最多 8 条 */
+  async activeForInjection(subject?: string): Promise<PracticeFocus[]> {
+    return (await this.load()).filter(f => f.status === '生效中' && subjectMatches(f.subject, subject)).slice(-8);
   }
 }
 
@@ -89,9 +101,9 @@ export class WeakImpressionService {
       }));
   }
 
-  /** 注入教练 prompt 用：待验证的印象，最多 8 条 */
-  async pendingForInjection(): Promise<WeakImpression[]> {
-    return (await this.load()).filter(i => i.status === '待验证').slice(-8);
+  /** 注入教练 prompt 用：待验证的印象，按科目过滤，最多 8 条 */
+  async pendingForInjection(subject?: string): Promise<WeakImpression[]> {
+    return (await this.load()).filter(i => i.status === '待验证' && subjectMatches(i.subject, subject)).slice(-8);
   }
 }
 

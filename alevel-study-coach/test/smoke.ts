@@ -104,10 +104,13 @@ async function main(): Promise<void> {
   ].join('\n') + '\n';
   const wis = new WeakImpressionService(fakeVault);
   await wis.append('Physics', '力学整体偏弱');
+  await wis.append('Econ', '宏观部分感觉模糊');
   const loaded = await wis.load();
-  check('弱点印象追加并可解析', loaded.length === 1 && loaded[0].desc === '力学整体偏弱' && loaded[0].status === '待验证');
+  check('弱点印象追加并可解析', loaded.length === 2 && loaded[0].desc === '力学整体偏弱' && loaded[0].status === '待验证');
   const pending = await wis.pendingForInjection();
-  check('待验证印象可注入教练 prompt', pending.length === 1 && pending[0].subject === 'Physics');
+  check('无科目参数时全量注入（精练/雅思模式）', pending.length === 2);
+  const pendingPhy = await wis.pendingForInjection('Physics');
+  check('按科目过滤：Physics 会话只注入物理印象', pendingPhy.length === 1 && pendingPhy[0].subject === 'Physics');
   check('弱点印象未进入主表', (await svc.load()).every(e => !e.desc.includes('力学整体')));
   
   // 9. 练习侧重：题型/习惯倾向独立存储与注入
@@ -118,10 +121,16 @@ async function main(): Promise<void> {
   ].join('\n') + '\n';
   const pfs = new PracticeFocusService(fakeVault);
   await pfs.append('Econ', '问答题习惯用日常词替代术语，导致丢失分点');
+  await pfs.append('Physics', '实验题目成功率不高');
+  await pfs.append('通用', '解释题习惯省略因果连接词');
   const loadedFocus = await pfs.load();
-  check('练习侧重追加并可解析', loadedFocus.length === 1 && loadedFocus[0].status === '生效中');
+  check('练习侧重追加并可解析', loadedFocus.length === 3 && loadedFocus[0].status === '生效中');
   const active = await pfs.activeForInjection();
-  check('生效中侧重可注入', active.length === 1 && active[0].subject === 'Econ');
+  check('无科目参数时全量注入', active.length === 3);
+  const activePhy = await pfs.activeForInjection('Physics');
+  check('按科目过滤：Physics 注入物理 + 通用，不含 Econ', activePhy.length === 2 && activePhy.every(f => f.subject === 'Physics' || f.subject === '通用'));
+  const activeEcon = await pfs.activeForInjection('Econ');
+  check('按科目过滤：Econ 注入 Econ + 通用', activeEcon.length === 2);
   check('练习侧重未进入主表', (await svc.load()).every(e => !e.desc.includes('日常词替代')));
 
   console.log(failed === 0 ? '\n全部通过 ✔' : `\n${failed} 项失败 ✘`);
