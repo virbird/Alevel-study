@@ -127,6 +127,16 @@ const JOURNAL_TEMPLATE = `# 学习日志
 > 随手记里无法归入进展/失分/术语的条目落在这里，按时间追加。
 `;
 
+const WEAK_IMPRESSIONS_TEMPLATE = `# 弱点印象
+
+> 冷启动/随手记里的模糊自述（如「力学比较弱」），没有具体考点，不进 error log 主表、不进复查队列。
+> 它们是待验证的先验：后续具体错题会给它们积累证据（Phase 2 自动关联）。
+> 状态：待验证 → 已确认（证据足够）/ 已作废（长期无证据或学生否认）。
+
+| 日期 | 科目 | 描述 | 证据数 | 状态 |
+|------|------|------|--------|------|
+`;
+
 /**
  * 负责 StudyCoach/ 目录的创建与种子文件生成。
  * 所有数据文件一旦存在就不会覆盖——用户可自由手改。
@@ -161,6 +171,7 @@ export class VaultService {
       await this.ensureFile(`${ROOT}/记录/术语清单.md`, TERM_LIST_TEMPLATE);
       await this.ensureFile(`${ROOT}/记录/提问记录.md`, QUESTION_LOG_TEMPLATE);
       await this.ensureFile(`${ROOT}/记录/学习日志.md`, JOURNAL_TEMPLATE);
+      await this.ensureFile(`${ROOT}/记录/弱点印象.md`, WEAK_IMPRESSIONS_TEMPLATE);
 
       await this.seedPrompts();
     } catch (e) {

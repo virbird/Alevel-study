@@ -4,7 +4,7 @@ import { LlmClient } from './llm/LlmClient';
 import { VaultService } from './services/VaultService';
 import { ProfileService } from './services/ProfileService';
 import { ErrorLogService } from './services/ErrorLogService';
-import { QuestionLogService, ProgressService } from './services/QuestionLogService';
+import { QuestionLogService, ProgressService, WeakImpressionService } from './services/QuestionLogService';
 import { PromptAssembler } from './services/PromptAssembler';
 import { MainView, VIEW_TYPE } from './ui/MainView';
 import { StudyCoachSettingTab } from './ui/SettingsTab';
@@ -30,6 +30,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   errorLog!: ErrorLogService;
   questionLog!: QuestionLogService;
   progress!: ProgressService;
+  weakImpressions!: WeakImpressionService;
   assembler!: PromptAssembler;
   private statusBarEl!: HTMLElement;
 
@@ -41,7 +42,8 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     this.errorLog = new ErrorLogService(this.vaultService);
     this.questionLog = new QuestionLogService(this.vaultService);
     this.progress = new ProgressService(this.vaultService);
-    this.assembler = new PromptAssembler(this.vaultService, this.profiles, this.errorLog, this.progress);
+    this.weakImpressions = new WeakImpressionService(this.vaultService);
+    this.assembler = new PromptAssembler(this.vaultService, this.profiles, this.errorLog, this.progress, this.weakImpressions);
 
     this.registerView(VIEW_TYPE, leaf => new MainView(leaf, this));
 

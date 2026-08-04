@@ -5,7 +5,7 @@ import { renderRow } from '../utils/markdown';
 import type { VaultService } from './VaultService';
 import type { ProfileService } from './ProfileService';
 import type { ErrorLogService } from './ErrorLogService';
-import type { ProgressService } from './QuestionLogService';
+import type { ProgressService, WeakImpressionService } from './QuestionLogService';
 import { ROOT } from './VaultService';
 
 const TAG_INSTRUCTION = `
@@ -29,6 +29,7 @@ export class PromptAssembler {
     private profileService: ProfileService,
     private errorLogService: ErrorLogService,
     private progressService: ProgressService,
+    private weakImpressions: WeakImpressionService,
   ) {}
 
   meta(key: ModeKey) {
@@ -45,6 +46,7 @@ export class PromptAssembler {
     const profile = await this.profileService.load();
     const unresolved = await this.errorLogService.unresolved();
     const progress = await this.progressService.recentSummary(Object.keys(profile.subjects));
+    const impressions = await this.weakImpressions.pendingForInjection();
 
     const parts: string[] = [template.replace(/\s*$/, '')];
     parts.push('\n════════ 插件注入：学生档案 ════════\n' + this.profileService.formatForInjection(profile));
@@ -59,10 +61,20 @@ export class PromptAssembler {
 
     if (progress) parts.push('\n════════ 插件注入：最近学习进展 ════════\n' + progress);
 
+    if (impressions.length) {
+      const lines = impressions.map(i => `- 【${i.subject}】${i.desc}`);
+      parts.push(
+        '\n════════ 插件注入：学生自述弱项（待验证的印象，非确诊结论）════════\n' +
+          lines.join('\n') +
+          '\n使用方式：这是学生自己的模糊感觉，尚无具体证据。不要当成确诊弱点反复提；' +
+          '遇到相关题目时可顺带验证（例如问他这个方向感觉如何），观察是否真有困难。',
+      );
+    }
+
     for (const block of extraBlocks) parts.push('\n' + block);
 
     parts.push(TAG_INSTRUCTION);
-    const summary = `模板 ${meta.promptFile} · 未消除 ${unresolved.length} 条 · ${progress ? '含最近进展' : '暂无进展记录'}${extraBlocks.length ? ` · 引用文档 ${extraBlocks.length} 份` : ''}`;
+    const summary = `模板 ${meta.promptFile} · 未消除 ${unresolved.length} 条 · ${progress ? '含最近进展' : '暂无进展记录'}${impressions.length ? ` · 待验证弱项 ${impressions.length} 条` : ''}${extraBlocks.length ? ` · 引用文档 ${extraBlocks.length} 份` : ''}`;
     return { prompt: parts.join('\n'), summary };
   }
 

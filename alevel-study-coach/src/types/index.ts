@@ -97,7 +97,17 @@ export interface OnboardProgress {
   text: string;
 }
 
+export interface OnboardError {
+  subject?: string;
+  topic?: string;
+  code?: string;
+  desc?: string;
+  fix?: string;
+  /** specific = 有明确考点，进主表；vague = 模糊印象，进弱点印象清单待验证 */
+  specificity?: 'specific' | 'vague';
+}
+
 export interface OnboardResult {
   progress: OnboardProgress[];
-  errors: Partial<ErrorLogEntry>[];
+  errors: OnboardError[];
 }

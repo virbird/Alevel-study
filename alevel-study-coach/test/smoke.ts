@@ -2,6 +2,7 @@
 import { ErrorLogService } from '../src/services/ErrorLogService';
 import type { VaultService } from '../src/services/VaultService';
 import { parseSessionMessages } from '../src/ui/MainView';
+import { WeakImpressionService } from '../src/services/QuestionLogService';
 
 const SEED = `# Error Log
 
@@ -17,6 +18,10 @@ const files: Record<string, string> = { 'StudyCoach/记录/error-log.md': SEED }
 const fakeVault = {
   read: async (p: string) => files[p] ?? null,
   write: async (p: string, c: string) => { files[p] = c; },
+  append: async (p: string, c: string) => {
+    const existing = files[p];
+    files[p] = existing === undefined ? c : existing.endsWith('\n') ? existing + c : existing + '\n' + c;
+  },
   hasConflict: async () => false,
 } as unknown as VaultService;
 
@@ -90,6 +95,20 @@ async function main(): Promise<void> {
   const msgs = parseSessionMessages(sessionFile);
   check('会话解析出 3 条消息', msgs.length === 3);
   check('会话角色与内容正确', msgs[0].role === 'user' && msgs[1].role === 'assistant' && msgs[2].content === '做出来了。');
+
+  // 8. 弱点印象：模糊自述不进主表，独立存储与注入
+  files['StudyCoach/记录/弱点印象.md'] = [
+    '# 弱点印象', '',
+    '| 日期 | 科目 | 描述 | 证据数 | 状态 |',
+    '|------|------|------|--------|------|',
+  ].join('\n') + '\n';
+  const wis = new WeakImpressionService(fakeVault);
+  await wis.append('Physics', '力学整体偏弱');
+  const loaded = await wis.load();
+  check('弱点印象追加并可解析', loaded.length === 1 && loaded[0].desc === '力学整体偏弱' && loaded[0].status === '待验证');
+  const pending = await wis.pendingForInjection();
+  check('待验证印象可注入教练 prompt', pending.length === 1 && pending[0].subject === 'Physics');
+  check('弱点印象未进入主表', (await svc.load()).every(e => !e.desc.includes('力学整体')));
 
   console.log(failed === 0 ? '\n全部通过 ✔' : `\n${failed} 项失败 ✘`);
   process.exit(failed === 0 ? 0 : 1);

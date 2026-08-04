@@ -7,14 +7,17 @@ import { todayStr } from '../utils/date';
 const EXTRACT_PROMPT = `你是学习记录工具的录入助手。请把学生的一段自由描述提取为结构化条目，只输出一个合法 JSON：
 {
   "progress": [ {"subject": "科目名", "text": "一句话进展"} ],
-  "errors": [ {"subject": "科目名", "topic": "考点英文名", "code": "失分代码", "desc": "一句话描述", "fix": "正确做法"} ]
+  "errors": [ {"subject": "科目名", "topic": "考点英文名", "code": "失分代码", "desc": "一句话描述", "fix": "正确做法", "specificity": "specific|vague"} ]
 }
 规则：
 1. 只提取学生明确说到的信息，不猜测不编造；无法确定的不放进任何数组。
 2. progress 是他说的"学到哪了 / 最近在学什么"；errors 是他说的"老错 / 老丢分 / 不会"的地方。
 3. subject 用：Maths / Physics / Chem / CS / Econ。
 4. code 从下面选一个：M,A,U,S,D,P,H,G,T,E,C,R,K,X,Z,DV,CL,LK；CS 另有 L,V,N,B,Q,O；Chem 另有 F,W,J,Y,I；Econ 另有 CR,EV,DG,CX,DF,CF。不确定就填空字符串。
-5. errors 的 topic 用英文考点名，不确定就填空字符串。`;
+5. errors 的 topic 用英文考点名，不确定就填空字符串。
+6. 【重要】每条 error 必须判断 specificity：
+   - specific：学生说到了具体考点、题型或某次具体错误（能写出明确 topic），这种进失分记录本；
+   - vague：只是对某科或某个大章节的模糊感觉（如"力学比较弱""化学感觉不行"），写不出具体考点，topic 留空。`;
 
 /**
  * 冷启动引导：用自己的话描述现状 → AI 提取 → 逐条确认入库。
@@ -74,7 +77,7 @@ export class OnboardModal extends Modal {
 
   private renderCandidates(el: HTMLElement, c: OnboardResult, source: string): void {
     el.empty();
-    const checks: { box: HTMLInputElement; kind: 'progress' | 'error'; idx: number }[] = [];
+    const checks: { box: HTMLInputElement; kind: 'progress' | 'error' | 'impression'; idx: number }[] = [];
 
     if (c.progress?.length) {
       el.createEl('h4', { text: `学习进展（${c.progress.length} 条，写入 记录/进展/）` });
@@ -87,14 +90,28 @@ export class OnboardModal extends Modal {
       });
     }
     if (c.errors?.length) {
-      el.createEl('h4', { text: `失分线索（${c.errors.length} 条，写入 error log，复查默认 7 天后）` });
-      c.errors.forEach((e, i) => {
-        const row = el.createDiv({ cls: 'asc-candidate' });
-        const box = row.createEl('input', { type: 'checkbox' });
-        box.checked = true;
-        row.createSpan({ text: `【${e.subject ?? '?'}】${e.topic || '(考点待定)'} · ${e.code || '(代码待定)'} · ${e.desc ?? ''}` });
-        checks.push({ box, kind: 'error', idx: i });
-      });
+      const specific = c.errors.filter(e => e.specificity !== 'vague' && (e.topic || e.desc));
+      const vague = c.errors.filter(e => e.specificity === 'vague' || (!e.topic && !e.desc));
+      if (specific.length) {
+        el.createEl('h4', { text: `具体失分点（${specific.length} 条，写入 error log，复查默认 7 天后）` });
+        specific.forEach((e, i) => {
+          const row = el.createDiv({ cls: 'asc-candidate' });
+          const box = row.createEl('input', { type: 'checkbox' });
+          box.checked = true;
+          row.createSpan({ text: `【${e.subject ?? '?'}】${e.topic || '(考点待定)'} · ${e.code || '(代码待定)'} · ${e.desc ?? ''}` });
+          checks.push({ box, kind: 'error', idx: c.errors!.indexOf(e) });
+        });
+      }
+      if (vague.length) {
+        el.createEl('h4', { text: `模糊弱点印象（${vague.length} 条，写入弱点印象清单，待后续具体错题验证）` });
+        vague.forEach(e => {
+          const row = el.createDiv({ cls: 'asc-candidate' });
+          const box = row.createEl('input', { type: 'checkbox' });
+          box.checked = true;
+          row.createSpan({ text: `【${e.subject ?? '?'}】${e.desc || '(无描述)'}` });
+          checks.push({ box, kind: 'impression', idx: c.errors!.indexOf(e) });
+        });
+      }
     }
 
     new Setting(el)
@@ -112,6 +129,11 @@ export class OnboardModal extends Modal {
                 if (ck.kind === 'progress') {
                   const p = c.progress![ck.idx];
                   await this.plugin.progress.append(p.subject, p.text, date);
+                  saved++;
+                } else if (ck.kind === 'impression') {
+                  const e = c.errors![ck.idx];
+                  if (!e.desc) continue;
+                  await this.plugin.weakImpressions.append(e.subject ?? '', e.desc);
                   saved++;
                 } else {
                   const e = c.errors![ck.idx];
