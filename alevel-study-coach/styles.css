@@ -464,6 +464,25 @@
   line-height: 1;
 }
 
+/* 记录中心分区标题与可点击链接 */
+.asc-section-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-top: 10px;
+  margin-bottom: 4px;
+  border-left: 3px solid var(--interactive-accent);
+  padding-left: 6px;
+}
+
+.asc-link {
+  cursor: pointer;
+  color: var(--link-color);
+}
+
+.asc-link:hover {
+  text-decoration: underline;
+}
+
 /* 选择器弹窗列表 */
 .asc-picker-list {
   max-height: 320px;

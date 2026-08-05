@@ -868,6 +868,12 @@ export class MainView extends ItemView {
     const el = this.bodyEl;
     const entries = await this.plugin.errorLog.load();
 
+    el.createEl('div', {
+      text: '记录中心：A-Level 失分记录与雅思记录统一展示（数据文件保持独立，不丢信息）。学科表达码（DV/CL/LK）与雅思 LR/GRA 同根。',
+      cls: 'asc-hint',
+    });
+    el.createEl('div', { text: 'A-Level 失分记录', cls: 'asc-section-title' });
+
     const bar = el.createDiv({ cls: 'asc-row' });
     const subjectSel = bar.createEl('select', { cls: 'asc-select' });
     subjectSel.createEl('option', { text: '全部科目', value: '' });
@@ -904,14 +910,66 @@ export class MainView extends ItemView {
     statusSel.addEventListener('change', draw);
     draw();
 
-    const links = el.createDiv({ cls: 'asc-row' });
     const open = (path: string) => () => {
       const file = this.app.vault.getAbstractFileByPath(path);
       if (file instanceof TFile) void this.app.workspace.getLeaf(true).openFile(file);
     };
+
+    // 雅思批改记录（评分事件，与失分表语义不同，独立展示）
+    el.createEl('div', { text: '雅思批改记录（趋势轨迹）', cls: 'asc-section-title' });
+    const scores = await this.plugin.ielts.loadScores();
+    if (!scores.length) {
+      el.createDiv({ text: '还没有批改记录。', cls: 'asc-empty' });
+    } else {
+      const st = el.createEl('table', { cls: 'asc-table' });
+      const shead = st.createEl('tr');
+      for (const h of ['日期', '来源', '总分', 'TR', 'CC', 'LR', 'GRA']) shead.createEl('th', { text: h });
+      for (const s of [...scores].reverse()) {
+        const tr = st.createEl('tr');
+        tr.createEl('td', { text: s.date });
+        const srcTd = tr.createEl('td', { text: s.title });
+        srcTd.addClass('asc-link');
+        srcTd.addEventListener('click', open(s.file));
+        for (const v of [s.overall, s.tr, s.cc, s.lr, s.gra]) tr.createEl('td', { text: v === null ? '-' : String(v) });
+      }
+    }
+
+    // 表达积累库（雅思高分表达 + 学科通用，同一能力池）
+    el.createEl('div', { text: '表达积累库（雅思+学科通用）', cls: 'asc-section-title' });
+    const exprs = await this.plugin.expressions.load();
+    if (!exprs.length) {
+      el.createDiv({ text: '还没有积累表达——批改作文后自动入库。', cls: 'asc-empty' });
+    } else {
+      const et = el.createEl('table', { cls: 'asc-table' });
+      const ehead = et.createEl('tr');
+      for (const h of ['表达', '类型', '来源', '入库日期', '状态']) ehead.createEl('th', { text: h });
+      for (const x of exprs) {
+        const tr = et.createEl('tr');
+        for (const cell of [x.expr, x.type, x.source, x.date, x.status]) tr.createEl('td', { text: cell });
+      }
+    }
+
+    // 提问记录（最近 20 条）
+    el.createEl('div', { text: '提问记录（最近 20 条）', cls: 'asc-section-title' });
+    const tags = (await this.plugin.engine.loadQuestionTags()).slice(-20).reverse();
+    if (!tags.length) {
+      el.createDiv({ text: '还没有提问记录——每次结题自动打标。', cls: 'asc-empty' });
+    } else {
+      const tt = el.createEl('table', { cls: 'asc-table' });
+      const thead = tt.createEl('tr');
+      for (const h of ['日期', '科目', '考点(EN)', '困惑类型', '求助深度']) thead.createEl('th', { text: h });
+      for (const t of tags) {
+        const tr = tt.createEl('tr');
+        for (const cell of [t.date, t.subject, t.topic, t.confusion, t.depth]) tr.createEl('td', { text: cell });
+      }
+    }
+
+    const links = el.createDiv({ cls: 'asc-row' });
     links.createEl('button', { text: '打开 error-log.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/error-log.md`));
-    links.createEl('button', { text: '提问记录', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/提问记录.md`));
-    links.createEl('button', { text: '术语清单', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/术语清单.md`));
+    links.createEl('button', { text: '批改记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(GRADE_LEDGER_PATH));
+    links.createEl('button', { text: '积累库.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(EXPR_LIB_PATH));
+    links.createEl('button', { text: '提问记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/提问记录.md`));
+    links.createEl('button', { text: '术语清单.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/术语清单.md`));
   }
 
   // ─── 复习 ────────────────────────────────────────────────
