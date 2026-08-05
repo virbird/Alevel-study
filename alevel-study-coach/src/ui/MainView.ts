@@ -710,14 +710,20 @@ export class MainView extends ItemView {
 
     const bar = parent.createDiv({ cls: 'asc-logbar' });
     const fmt = (v: number | null) => (v === null ? '-' : String(v));
+    // 来源：有引用文档则精确到 vault 文档路径，否则才是「教练会话」（直接贴作文时）
+    const source = this.attachments.length ? this.attachments[this.attachments.length - 1].path : '教练会话';
     bar.createSpan({
       text: `检测到批改结果：总分 ${fmt(s.overall)}（TR ${fmt(s.tr)} / CC ${fmt(s.cc)} / LR ${fmt(s.lr)} / GRA ${fmt(s.gra)}）· ${parsed.expressions.length} 条高分表达`,
+    });
+    bar.createEl('div', {
+      text: `来源：${source}${this.attachments.length ? '（最近引用的文档）' : '（未引用文档，作文直接贴在对话里）'}`,
+      cls: 'asc-logrow',
     });
     const btns = bar.createDiv();
     btns.createEl('button', { text: '入库分数与表达', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', async ev => {
       (ev.target as HTMLElement).setAttr('disabled', 'true');
       try {
-        await this.plugin.ielts.registerGrade(s);
+        await this.plugin.ielts.registerGrade(s, source);
         const added = parsed.expressions.length
           ? await this.plugin.expressions.appendAll(parsed.expressions, `教练会话-${todayStr()}`)
           : 0;

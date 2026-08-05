@@ -195,7 +195,11 @@ export async function run(): Promise<void> {
   await svcCoach.registerGrade({ overall: 6.5, tr: 7, cc: 6, lr: 6.5, gra: 6.5 });
   const coachScores = await svcCoach.loadScores();
   eq('教练会话分数进台账', [coachScores.length, coachScores[0].overall], [1, 6.5]);
-  check('台账来源标记为教练会话', coachScores[0].title === '教练会话');
+  check('无来源时默认标记教练会话', coachScores[0].title === '教练会话');
+  await svcCoach.registerGrade({ overall: 7, tr: 7, cc: 7, lr: 7, gra: 7 }, '雅思/作文-0726.md');
+  const scores2 = await svcCoach.loadScores();
+  eq('有引用文档时台账精确到文档路径', [scores2.length, scores2[1].file], [2, '雅思/作文-0726.md']);
+  check('台账标题显示文档名', scores2[1].title === '作文-0726');
   const coachExprs = parseIeltsResult(REPLY_OK).expressions;
   eq('教练会话表达进积累库', await esCoach.appendAll(coachExprs, '教练会话'), 2);
 }
