@@ -460,19 +460,6 @@ export class MainView extends ItemView {
     }
     chatEl.scrollTop = chatEl.scrollHeight;
 
-    // 上下文指示：紧贴会话窗口（发送前超 80% 自动压缩，也可手动）
-    const ctxRow = el.createDiv({ cls: 'asc-ctx-row' });
-    const ctx = this.contextTokens();
-    const win = this.plugin.settings.contextWindow;
-    const ctxEl = ctxRow.createSpan({
-      text: `上下文 ≈${formatTokens(ctx)}/${formatTokens(win)}${ctx > win * 0.8 ? ' ⚠' : ''}`,
-      cls: 'asc-ctx' + (ctx > win * 0.8 ? ' asc-ctx-warn' : ''),
-    });
-    ctxEl.setAttr('title', '当前会话的估算上下文；发送前超过 80% 会自动压缩');
-    const compressBtn = ctxRow.createEl('button', { text: '压缩', cls: 'asc-btn asc-btn-small' });
-    compressBtn.setAttr('title', '把较早对话压缩为摘要，保留最近几轮');
-    compressBtn.addEventListener('click', () => void this.compressContext(true));
-
     const inputBar = el.createDiv({ cls: 'asc-input-bar' });
     const input = inputBar.createEl('textarea', { attr: { rows: '2', placeholder: this.systemPrompt ? '把题目原文发过来……' : '先点「新会话」开始' } });
     const sendBtn = inputBar.createEl('button', { text: this.busy ? '回复中…' : '发送', cls: 'asc-btn asc-btn-cta' });
@@ -491,6 +478,19 @@ export class MainView extends ItemView {
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); doSend(); }
     });
+
+    // 上下文指示：发送框下方（符合聊天应用习惯；发送前超 80% 自动压缩，也可手动）
+    const ctxRow = el.createDiv({ cls: 'asc-ctx-row' });
+    const ctx = this.contextTokens();
+    const win = this.plugin.settings.contextWindow;
+    const ctxEl = ctxRow.createSpan({
+      text: `上下文 ≈${formatTokens(ctx)}/${formatTokens(win)}${ctx > win * 0.8 ? ' ⚠' : ''}`,
+      cls: 'asc-ctx' + (ctx > win * 0.8 ? ' asc-ctx-warn' : ''),
+    });
+    ctxEl.setAttr('title', '当前会话的估算上下文；发送前超过 80% 会自动压缩');
+    const compressBtn = ctxRow.createEl('button', { text: '压缩', cls: 'asc-btn asc-btn-small' });
+    compressBtn.setAttr('title', '把较早对话压缩为摘要，保留最近几轮');
+    compressBtn.addEventListener('click', () => void this.compressContext(true));
   }
 
   /** 进阶角思维题：数学会话 + 自动启动独立思考计时（提示词的思维题分支） */
