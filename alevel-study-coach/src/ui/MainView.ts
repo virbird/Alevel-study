@@ -104,6 +104,25 @@ export class MainView extends ItemView {
     root.empty();
     root.addClass('asc-root');
 
+    // 顶部：全局模型选择（作用于所有功能：教练/批改/抽查/周报）
+    const modelBar = root.createDiv({ cls: 'asc-model-bar' });
+    const gSel = modelBar.createEl('select', { cls: 'asc-select asc-model-select' });
+    const gModels = this.plugin.modelList();
+    const gCur = this.plugin.settings.llm.model;
+    const gDef = this.plugin.currentModelDefault();
+    if (!gModels.length) gSel.createEl('option', { text: gCur || '未配置模型（去设置页）', value: gCur });
+    for (const m of gModels) {
+      gSel.createEl('option', { text: m === gDef ? `${m} ★默认` : m, value: m });
+    }
+    gSel.value = gCur;
+    gSel.setAttr('title', '全局模型：影响教练会话、作文批改、术语抽查等所有 AI 调用');
+    gSel.addEventListener('change', async () => {
+      this.plugin.settings.llm.model = gSel.value;
+      await this.plugin.saveSettings();
+      new Notice(`模型已切换：${gSel.value}`);
+      this.render();
+    });
+
     // 头部
     const header = root.createDiv({ cls: 'asc-header' });
     header.createSpan({ text: '🎓 A-Level Study Coach', cls: 'asc-title' });
@@ -377,35 +396,6 @@ export class MainView extends ItemView {
     );
     iconBtn('⏱', this.systemPrompt ? '独立思考计时' : '独立思考计时（先开会话）', () => void this.startTimer());
 
-    // 模型切换 + 上下文用量（紧凑一行）
-    const metaRow = el.createDiv({ cls: 'asc-coach-meta' });
-    const modelSel = metaRow.createEl('select', { cls: 'asc-select asc-model-select' });
-    const models = this.plugin.modelList();
-    const curModel = this.plugin.settings.llm.model;
-    const defModel = this.plugin.currentModelDefault();
-    if (!models.length) modelSel.createEl('option', { text: curModel || '未配置模型', value: curModel });
-    for (const m of models) {
-      modelSel.createEl('option', { text: m === defModel ? `${m} ★默认` : m, value: m });
-    }
-    modelSel.value = curModel;
-    modelSel.addEventListener('change', async () => {
-      this.plugin.settings.llm.model = modelSel.value;
-      await this.plugin.saveSettings();
-      if (this.systemPrompt) await this.rebuildSystemPrompt();
-      new Notice(`模型已切换：${modelSel.value}`);
-      this.render();
-    });
-    const ctx = this.contextTokens();
-    const win = this.plugin.settings.contextWindow;
-    const ctxEl = metaRow.createSpan({
-      text: `上下文 ≈${formatTokens(ctx)}/${formatTokens(win)}${ctx > win * 0.8 ? ' ⚠' : ''}`,
-      cls: 'asc-ctx' + (ctx > win * 0.8 ? ' asc-ctx-warn' : ''),
-    });
-    ctxEl.setAttr('title', '发送前超过 80% 会自动压缩；也可手动压缩');
-    const compressBtn = metaRow.createEl('button', { text: '压缩', cls: 'asc-btn asc-btn-small' });
-    compressBtn.setAttr('title', '把较早对话压缩为摘要，保留最近几轮');
-    compressBtn.addEventListener('click', () => void this.compressContext(true));
-
     if (this.timerDeadline > Date.now()) {
       const cd = el.createDiv({ cls: 'asc-timer' });
       cd.setText(`⏱ 独立思考中，距求助门槛还有 ${fmtRemain(this.timerDeadline - Date.now())}——卡住本身就是训练内容`);
@@ -467,6 +457,19 @@ export class MainView extends ItemView {
       }
     }
     chatEl.scrollTop = chatEl.scrollHeight;
+
+    // 上下文指示：紧贴会话窗口（发送前超 80% 自动压缩，也可手动）
+    const ctxRow = el.createDiv({ cls: 'asc-ctx-row' });
+    const ctx = this.contextTokens();
+    const win = this.plugin.settings.contextWindow;
+    const ctxEl = ctxRow.createSpan({
+      text: `上下文 ≈${formatTokens(ctx)}/${formatTokens(win)}${ctx > win * 0.8 ? ' ⚠' : ''}`,
+      cls: 'asc-ctx' + (ctx > win * 0.8 ? ' asc-ctx-warn' : ''),
+    });
+    ctxEl.setAttr('title', '当前会话的估算上下文；发送前超过 80% 会自动压缩');
+    const compressBtn = ctxRow.createEl('button', { text: '压缩', cls: 'asc-btn asc-btn-small' });
+    compressBtn.setAttr('title', '把较早对话压缩为摘要，保留最近几轮');
+    compressBtn.addEventListener('click', () => void this.compressContext(true));
 
     const inputBar = el.createDiv({ cls: 'asc-input-bar' });
     const input = inputBar.createEl('textarea', { attr: { rows: '2', placeholder: this.systemPrompt ? '把题目原文发过来……' : '先点「新会话」开始' } });
