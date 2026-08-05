@@ -59,6 +59,10 @@ export class MainView extends ItemView {
 
   async onOpen(): Promise<void> {
     this.containerEl.addClass('asc-view');
+    // 切换笔记时刷新雅思页签的批改目标显示，避免「不知道批改哪篇」
+    this.registerEvent(this.app.workspace.on('file-open', () => {
+      if (this.tab === 'ielts') this.render();
+    }));
     this.render();
   }
 
@@ -168,7 +172,13 @@ export class MainView extends ItemView {
     wc.createEl('div', { text: '作文工作流', cls: 'asc-card-title' });
     wc.createEl('div', { text: '把题目和作文写进任意笔记（同一篇即可，支持 ![[图片]] 引用）→ 打开该笔记 → 批改当前作文：六段输出写入笔记「## AI 批改」小节，分数进台账，高分表达进积累库。', cls: 'asc-hint' });
     const wbtns = wc.createDiv({ cls: 'asc-row' });
-    wbtns.createEl('button', { text: '批改当前作文', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.plugin.gradeActiveEssay());
+    const activeFile = this.app.workspace.getActiveFile();
+    const activeName = activeFile && activeFile.path.endsWith('.md') ? activeFile.basename : '';
+    const gradeBtn = wbtns.createEl('button', {
+      text: activeName ? `批改当前作文（${activeName}）` : '批改当前作文（先打开作文笔记）',
+      cls: 'asc-btn asc-btn-cta asc-btn-small',
+    });
+    gradeBtn.addEventListener('click', () => void this.plugin.gradeActiveEssay());
     wbtns.createEl('button', { text: '打开批改记录', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => this.openFile(GRADE_LEDGER_PATH));
     if (scores.length) {
       const last = scores[scores.length - 1].file;

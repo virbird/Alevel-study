@@ -17,7 +17,7 @@ import { MainView, VIEW_TYPE } from './ui/MainView';
 import { StudyCoachSettingTab } from './ui/SettingsTab';
 import { OnboardModal } from './ui/OnboardModal';
 import { CaptureModal } from './ui/CaptureModal';
-import { ExpressionDrillModal } from './ui/IeltsModals';
+import { ExpressionDrillModal, GradeConfirmModal } from './ui/IeltsModals';
 import { todayStr, daysBetween, isoWeekKey } from './utils/date';
 
 export interface CoachPluginSettings {
@@ -186,24 +186,30 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     }
   }
 
-  /** 批改当前打开的任意笔记：题目+作文可同篇，可含图片；六段输出回填 ## AI 批改 + 分数进台账 */
+  /** 批改入口：先弹窗确认目标文件（避免误批改），确认后走 gradeFilePath */
   async gradeActiveEssay(): Promise<void> {
     const file = this.app.workspace.getActiveFile();
     if (!file || !file.path.endsWith('.md')) {
       new Notice('请先打开含作文的笔记（题目与作文可写在同一篇，支持图片）');
       return;
     }
+    new GradeConfirmModal(this.app, this, file.path).open();
+  }
+
+  /** 批改指定笔记：题目+作文可同篇，可含图片；六段输出回填 ## AI 批改 + 分数进台账 */
+  async gradeFilePath(path: string): Promise<void> {
     if (!this.llm.configured) {
       new Notice('请先在设置里配置 LLM');
       return;
     }
     new Notice('批改中……六段结构化输出约需几十秒');
     try {
-      const result = await this.ielts.gradeNote(file.path, this.llm);
-      const added = await this.expressions.appendAll(result.expressions, file.basename);
+      const result = await this.ielts.gradeNote(path, this.llm);
+      const basename = path.split('/').pop()?.replace(/\.md$/, '') ?? path;
+      const added = await this.expressions.appendAll(result.expressions, basename);
       const s = result.scores;
       new Notice(
-        `批改完成${s.overall !== null ? `：预估总分 ${s.overall}` : ''}${result.imageCount ? `（含 ${result.imageCount} 张图片）` : ''}${added ? `，${added} 条高分表达进积累库` : ''}`,
+        `批改完成：${basename}${s.overall !== null ? `，预估总分 ${s.overall}` : ''}${result.imageCount ? `（含 ${result.imageCount} 张图片）` : ''}${added ? `，${added} 条高分表达进积累库` : ''}`,
         10000,
       );
     } catch (e) {

@@ -348,6 +348,16 @@
   font-size: 13px;
 }
 
+.asc-confirm-path {
+  font-weight: 600;
+  font-size: 14px;
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin: 6px 0;
+  word-break: break-all;
+}
+
 /* 选择器弹窗列表 */
 .asc-picker-list {
   max-height: 320px;

@@ -4,6 +4,58 @@ import type { ExpressionRow } from '../services/ExpressionService';
 import type { ChatMessage } from '../types';
 import { extractJson } from '../llm/LlmClient';
 
+/** 批改前确认目标文件：显示路径、字数、图片数，避免误批改 */
+export class GradeConfirmModal extends Modal {
+  constructor(app: App, private plugin: ALevelStudyCoachPlugin, private path: string) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.addClass('asc-modal');
+    contentEl.createEl('h2', { text: '确认批改目标' });
+    contentEl.createEl('div', { text: `将批改以下笔记（题目与作文可同篇，图片会发给视觉模型）：`, cls: 'asc-muted' });
+    contentEl.createEl('div', { text: this.path, cls: 'asc-confirm-path' });
+    const info = contentEl.createDiv({ cls: 'asc-muted' });
+    info.setText('正在预览……');
+
+    const bar = contentEl.createDiv({ cls: 'asc-row' });
+    const goBtn = bar.createEl('button', { text: '开始批改', cls: 'asc-btn asc-btn-cta' });
+    goBtn.addEventListener('click', () => {
+      this.close();
+      void this.plugin.gradeFilePath(this.path);
+    });
+    bar.createEl('button', { text: '取消', cls: 'asc-btn' }).addEventListener('click', () => this.close());
+
+    void (async () => {
+      try {
+        const content = await this.plugin.vaultService.read(this.path);
+        if (!content) {
+          info.setText('笔记不存在或无法读取');
+          goBtn.disabled = true;
+          return;
+        }
+        const { text, images, skipped } = await this.plugin.ielts.extractNoteImages(this.path, content);
+        const textLen = text.replace(/\[图片[^\]]*\]/g, '').trim().length;
+        const parts = [`正文约 ${textLen} 字`, `图片 ${images.length} 张`];
+        if (skipped.length) parts.push(`跳过 ${skipped.length} 张（${skipped.join('、')}）`);
+        info.setText(parts.join(' · '));
+        if (textLen < 40) {
+          info.setText(parts.join(' · ') + ' —— 文字太少，请先写入题目与作文');
+          goBtn.disabled = true;
+        }
+      } catch (e) {
+        info.setText(`预览失败：${e instanceof Error ? e.message : String(e)}`);
+        goBtn.disabled = true;
+      }
+    })();
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
 const EXPR_DRILL_CLOSE = '抽查结束。请汇总所有表达的结果，输出 exprResults JSON 代码块。';
 
 /** 表达造句抽查：到期表达逐个造句，AI 判定，结束自动更新间隔档位 */
