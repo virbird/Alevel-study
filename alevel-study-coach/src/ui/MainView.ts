@@ -583,15 +583,16 @@ export class MainView extends ItemView {
     this.busy = true;
     this.render();
 
-    // 流式气泡：增量显示纯文本，完成后统一渲染 markdown
+    // 流式气泡：增量显示纯文本 + 流式光标，完成后统一渲染 markdown
     const chatEl = this.bodyEl.querySelector('.asc-chat');
     let bubble: HTMLElement | null = null;
     if (chatEl) {
       bubble = chatEl.createDiv({ cls: 'asc-msg asc-msg-assistant' });
-      bubble.setText('……');
+      bubble.setText('▍');
     }
 
     let raw = '';
+    let deltas = 0;
     let lastPaint = 0;
     try {
       for await (const ev of this.plugin.llm.chatStream({
@@ -601,9 +602,10 @@ export class MainView extends ItemView {
       })) {
         if (ev.type === 'text_delta') {
           raw += ev.text;
+          deltas++;
           const now = Date.now();
-          if (bubble && chatEl && now - lastPaint > 80) {
-            bubble.setText(raw);
+          if (bubble && chatEl && now - lastPaint > 50) {
+            bubble.setText(raw + '▍');
             chatEl.scrollTop = chatEl.scrollHeight;
             lastPaint = now;
           }
@@ -611,7 +613,17 @@ export class MainView extends ItemView {
           throw new Error(ev.message);
         }
       }
+      // 提供商不支持流式（忽略 stream:true 一次性返回）时自动降级，保证回复必达
+      if (!raw.trim() && deltas === 0) {
+        if (bubble) bubble.setText('（该接口未返回流式增量，改用整块请求…）');
+        raw = await this.plugin.llm.chat({
+          system: this.systemPrompt,
+          messages: this.messages,
+          maxTokens: 4096,
+        });
+      }
       if (!raw.trim()) throw new Error('模型返回内容为空');
+      console.log(`[StudyCoach] 回复完成：${deltas} 个流式增量块，共 ${raw.length} 字${deltas <= 1 ? '（未检测到流式增量：提供商可能不支持流式，已自动降级为整块请求）' : ''}`);
       this.messages.push({ role: 'assistant', content: raw });
       await this.handleReplySideEffects(raw);
     } catch (e) {
