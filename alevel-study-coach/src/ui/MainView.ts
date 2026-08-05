@@ -583,13 +583,20 @@ export class MainView extends ItemView {
     this.busy = true;
     this.render();
 
-    // 流式气泡：增量显示纯文本 + 流式光标，完成后统一渲染 markdown
+    // 流式气泡：首字符前显示带秒数的等待指示，收到增量后切换为流式光标，完成后渲染 markdown
     const chatEl = this.bodyEl.querySelector('.asc-chat');
     let bubble: HTMLElement | null = null;
     if (chatEl) {
       bubble = chatEl.createDiv({ cls: 'asc-msg asc-msg-assistant' });
-      bubble.setText('▍');
+      bubble.setText('正在等待模型响应… ⏳');
     }
+    const startedAt = Date.now();
+    let waiting = true;
+    const waitTicker = window.setInterval(() => {
+      if (waiting && bubble) {
+        bubble.setText(`正在等待模型响应… ${Math.round((Date.now() - startedAt) / 1000)} 秒（带图片/长作文时较慢，属正常）`);
+      }
+    }, 1000);
 
     let raw = '';
     let deltas = 0;
@@ -601,6 +608,10 @@ export class MainView extends ItemView {
         maxTokens: 4096,
       })) {
         if (ev.type === 'text_delta') {
+          if (waiting) {
+            waiting = false;
+            window.clearInterval(waitTicker);
+          }
           raw += ev.text;
           deltas++;
           const now = Date.now();
@@ -630,6 +641,8 @@ export class MainView extends ItemView {
       new Notice(`请求失败：${e instanceof Error ? e.message : String(e)}`, 10000);
       this.messages.pop(); // 撤回未成功的用户消息，方便重试
     } finally {
+      waiting = false;
+      window.clearInterval(waitTicker);
       this.busy = false;
       this.render();
     }
