@@ -278,13 +278,13 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     this.gradingAbort?.abort();
   }
 
-  /** 长任务状态变化后刷新插件视图；switchToIelts=true 时切到雅思页签（不打断教练会话） */
-  private refreshCoachViews(switchToIelts = false): void {
+  /** 长任务状态变化后刷新插件视图；switchToHome=true 时切到首页（批改任务卡片在首页顶部，不打断教练会话） */
+  private refreshCoachViews(switchToHome = false): void {
     const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
-    const view = leaf?.view as unknown as { refresh?: () => void; showIelts?: () => void; currentTab?: string } | undefined;
+    const view = leaf?.view as unknown as { refresh?: () => void; showHome?: () => void; currentTab?: string } | undefined;
     if (!view) return;
-    if (switchToIelts && view.showIelts && view.currentTab !== 'coach') {
-      view.showIelts();
+    if (switchToHome && view.showHome && view.currentTab !== 'coach') {
+      view.showHome();
     } else if (view.refresh) {
       view.refresh();
     }
