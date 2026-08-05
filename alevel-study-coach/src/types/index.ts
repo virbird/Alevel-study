@@ -38,7 +38,7 @@ export const SUBJECTS: SubjectMeta[] = [
   { key: 'CS', label: '计算机 CS', promptFile: 'prompt-cs.md', logName: 'CS' },
   { key: 'Economics', label: '经济 Economics', promptFile: 'prompt-economics.md', logName: 'Econ' },
   { key: 'drill', label: '概念精练（术语训练）', promptFile: 'prompt-drill.md' },
-  { key: 'ielts', label: '雅思写作批改', promptFile: 'ielts-writing.md' },
+  { key: 'ielts', label: '雅思写作训练（批改/点评/讨论）', promptFile: 'prompt-ielts.md' },
 ];
 
 // ─── 学生档案 ───────────────────────────────────────────────

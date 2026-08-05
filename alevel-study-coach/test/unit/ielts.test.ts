@@ -173,4 +173,18 @@ export async function run(): Promise<void> {
   const parts = await svcText.loadImageParts(['attach/题目.png', '不存在.png']);
   eq('按路径载图跳过缺失', parts.map(p => p.name), ['题目.png']);
   eq('载图 base64 正确', parts[0].data, btoa(String.fromCharCode(1, 1)));
+
+  section('UT: 教练会话批改入库（registerGrade + 表达）');
+  const vCoach = new FakeVault({ seed: {
+    [GRADE_LEDGER_PATH]: '# 批改记录\n\n| 日期 | 笔记 | 总分 | TR | CC | LR | GRA |\n|------|------|------|----|----|----|----|\n',
+    [EXPR_LIB_PATH]: '# 表达积累库\n\n| 表达 | 类型 | 来源 | 日期 | 间隔 | 下次 | 状态 |\n|------|------|------|------|------|------|------|\n',
+  } });
+  const svcCoach = new IeltsService(vCoach.asService());
+  const esCoach = new ExpressionService(vCoach.asService());
+  await svcCoach.registerGrade({ overall: 6.5, tr: 7, cc: 6, lr: 6.5, gra: 6.5 });
+  const coachScores = await svcCoach.loadScores();
+  eq('教练会话分数进台账', [coachScores.length, coachScores[0].overall], [1, 6.5]);
+  check('台账来源标记为教练会话', coachScores[0].title === '教练会话');
+  const coachExprs = parseIeltsResult(REPLY_OK).expressions;
+  eq('教练会话表达进积累库', await esCoach.appendAll(coachExprs, '教练会话'), 2);
 }

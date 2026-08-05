@@ -10,6 +10,7 @@ const PROMPT_FILES = [
   'prompt-cs.md',
   'prompt-economics.md',
   'prompt-drill.md',
+  'prompt-ielts.md',
   'ielts-writing.md',
 ];
 

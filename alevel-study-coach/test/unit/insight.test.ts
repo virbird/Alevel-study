@@ -90,6 +90,7 @@ export async function run(): Promise<void> {
     'StudyCoach/prompts/prompt-maths.md': '数学教练模板正文',
     'StudyCoach/prompts/prompt-physics.md': '物理教练模板正文',
     'StudyCoach/prompts/ielts-writing.md': '雅思批改模板正文',
+    'StudyCoach/prompts/prompt-ielts.md': '雅思写作教练模板正文',
     'StudyCoach/档案.md': '---\nstage: "G10"\nsubjects:\n  Maths: "IG+AS / AS主导 / 目标A*"\n---\n',
     'StudyCoach/记录/error-log.md': seedLog([
       `| 001 | ${todayStr()} | Maths | AS | Quadratic inequalities | 题 | D | 描述 | 做法 | expr | 1 | 未消除 | ${addDays(todayStr(), 7)} |`,
@@ -126,7 +127,7 @@ export async function run(): Promise<void> {
   const physBuilt = await assembler.buildSystemPrompt('Physics');
   check('其他科目不注入 Maths 印象', !physBuilt!.prompt.includes('统计几何薄弱'));
   const ieltsBuilt = await assembler.buildSystemPrompt('ielts');
-  check('雅思模式用雅思模板', ieltsBuilt!.prompt.includes('雅思批改模板正文'));
+  check('雅思模式用教练模板', ieltsBuilt!.prompt.includes('雅思写作教练模板正文'));
   const extra = await assembler.buildSystemPrompt('Maths', ['════ 参考文档「笔记」════\n文档内容']);
   check('引用文档注入', extra!.prompt.includes('文档内容'));
 }

@@ -10,7 +10,7 @@ import { OnboardModal } from './OnboardModal';
 import { CaptureModal } from './CaptureModal';
 import { SessionHistoryModal, AttachPickerModal, ImagePickerModal } from './PickerModals';
 import { SuggestionModal, DrillModal } from './InsightModals';
-import { EXPR_LIB_PATH, GRADE_LEDGER_PATH } from '../services/IeltsService';
+import { EXPR_LIB_PATH, GRADE_LEDGER_PATH, parseIeltsResult } from '../services/IeltsService';
 import { oxbridgeGuidance } from '../services/ReportService';
 import type { TermEntry } from '../services/TermService';
 import type { ImagePart } from '../types';
@@ -462,7 +462,8 @@ export class MainView extends ItemView {
       const bubble = chatEl.createDiv({ cls: 'asc-msg asc-msg-' + m.role });
       void MarkdownRenderer.render(this.app, m.content, bubble, '', this.plugin);
       if (m.role === 'assistant' && m === this.messages[this.messages.length - 1]) {
-        this.renderLogRowPrompt(bubble);
+        if (this.mode === 'ielts') this.renderIeltsResultPrompt(bubble, m.content);
+        else this.renderLogRowPrompt(bubble);
       }
     }
     chatEl.scrollTop = chatEl.scrollHeight;
@@ -668,6 +669,35 @@ export class MainView extends ItemView {
       new Notice(`已入库 ${ok} 条（复发条目自动 +1 并顺延复查日期）`);
       void this.plugin.refreshStatusBar();
       bar.remove();
+    });
+    btns.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
+  }
+
+  /** 教练雅思会话：检测回复里的批改结果 JSON → 确认卡片，分数进台账、表达进积累库 */
+  private renderIeltsResultPrompt(parent: HTMLElement, reply: string): void {
+    const parsed = parseIeltsResult(reply);
+    const s = parsed.scores;
+    if (s.overall === null) return;
+
+    const bar = parent.createDiv({ cls: 'asc-logbar' });
+    const fmt = (v: number | null) => (v === null ? '-' : String(v));
+    bar.createSpan({
+      text: `检测到批改结果：总分 ${fmt(s.overall)}（TR ${fmt(s.tr)} / CC ${fmt(s.cc)} / LR ${fmt(s.lr)} / GRA ${fmt(s.gra)}）· ${parsed.expressions.length} 条高分表达`,
+    });
+    const btns = bar.createDiv();
+    btns.createEl('button', { text: '入库分数与表达', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', async ev => {
+      (ev.target as HTMLElement).setAttr('disabled', 'true');
+      try {
+        await this.plugin.ielts.registerGrade(s);
+        const added = parsed.expressions.length
+          ? await this.plugin.expressions.appendAll(parsed.expressions, `教练会话-${todayStr()}`)
+          : 0;
+        new Notice(`已入库：分数进批改记录（趋势可见）${added ? `，${added} 条表达进积累库` : ''}`);
+        bar.remove();
+      } catch (e) {
+        new Notice(`入库失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+        (ev.target as HTMLElement).removeAttribute('disabled');
+      }
     });
     btns.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
   }

@@ -231,11 +231,16 @@ export class IeltsService {
     return { ...parsed, imageCount: images.length, skipped };
   }
 
-  /** 分数台账：任意笔记批改后追加一行（趋势数据源） */
+  /** 分数台账：批改后追加一行（趋势数据源）；教练会话入库也走这里 */
   private async appendLedger(s: GradeResult['scores'], notePath: string): Promise<void> {
     const fmt = (v: number | null) => (v === null ? '-' : String(v));
     const row = renderRow([todayStr(), notePath, fmt(s.overall), fmt(s.tr), fmt(s.cc), fmt(s.lr), fmt(s.gra)]);
     await this.vault.append(GRADE_LEDGER_PATH, row);
+  }
+
+  /** 教练会话中批改结果入库（来源记为「教练会话」） */
+  async registerGrade(s: GradeResult['scores'], source = '教练会话'): Promise<void> {
+    await this.appendLedger(s, source);
   }
 
   private async loadLedger(): Promise<EssayScores[]> {
