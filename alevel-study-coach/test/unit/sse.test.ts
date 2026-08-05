@@ -1,6 +1,7 @@
 // UT：SSE 流式解析（OpenAI 兼容 / Anthropic）
 import { section, check, eq } from '../harness';
 import { parseOpenAISSE, parseClaudeSSE } from '../../src/llm/sseParser';
+import { stripMachineBlocks } from '../../src/ui/MainView';
 
 export async function run(): Promise<void> {
   section('UT: parseOpenAISSE');
@@ -53,4 +54,25 @@ export async function run(): Promise<void> {
   const claudeErr = parseClaudeSSE('data: {"type":"error","message":"overloaded"}\n');
   eq('Claude 错误事件', claudeErr.events, [{ type: 'error', message: 'overloaded' }]);
   check('空缓冲无事件', parseClaudeSSE('').events.length === 0);
+
+  section('UT: stripMachineBlocks 剥离机器用 JSON 块');
+  const reply = [
+    '【1. 总分与分项评分】预测总分 6.0……',
+    '',
+    '```json',
+    '{"ieltsResult": {"overall": 6.0, "expressions": []}}',
+    '```',
+    '',
+    '【6. 建议】多练习。',
+    '',
+    '```json',
+    '{"sessionTag": {"topic": "Task 1"}}',
+    '```',
+  ].join('\n');
+  const stripped = stripMachineBlocks(reply);
+  check('机器块被剥离', !stripped.includes('ieltsResult') && !stripped.includes('sessionTag'));
+  check('正文保留', stripped.includes('总分与分项评分') && stripped.includes('【6. 建议】多练习。'));
+  const withOther = '正文\n```json\n{"other": 1}\n```\n结尾';
+  check('非机器 JSON 块保留', stripMachineBlocks(withOther).includes('{"other": 1}'));
+  check('多余空行收敛', !stripMachineBlocks(reply).includes('\n\n\n'));
 }

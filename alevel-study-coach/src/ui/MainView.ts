@@ -460,7 +460,9 @@ export class MainView extends ItemView {
     }
     for (const m of this.messages) {
       const bubble = chatEl.createDiv({ cls: 'asc-msg asc-msg-' + m.role });
-      void MarkdownRenderer.render(this.app, m.content, bubble, '', this.plugin);
+      // 展示时剥离机器用 JSON 块（ieltsResult/sessionTag），交互由下方入库卡片承担
+      const display = m.role === 'assistant' ? stripMachineBlocks(m.content) : m.content;
+      void MarkdownRenderer.render(this.app, display, bubble, '', this.plugin);
       if (m.role === 'assistant' && m === this.messages[this.messages.length - 1]) {
         if (this.mode === 'ielts') this.renderIeltsResultPrompt(bubble, m.content);
         else this.renderLogRowPrompt(bubble);
@@ -923,6 +925,14 @@ function timeStr(): string {
 function fmtRemain(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
   return `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
+}
+
+/** 剥离回复里机器用 JSON 块（ieltsResult / sessionTag），其他内容原样保留；导出供测试 */
+export function stripMachineBlocks(content: string): string {
+  return content
+    .replace(/```json\s*[\s\S]*?```/g, block => (/"ieltsResult"|"sessionTag"/.test(block) ? '' : block))
+    .replace(/\n{3,}/g, '\n\n')
+    .trimEnd();
 }
 
 /** 思考凭证标注（导出供测试）：让教练知道学生真想满了门槛，而非口头声称 */
