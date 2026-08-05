@@ -194,11 +194,24 @@ export class IeltsService {
     const template = (await this.vault.read(`${ROOT}/prompts/ielts-writing.md`)) ?? '';
     if (!template) throw new Error('找不到 prompts/ielts-writing.md 模板');
 
+    // 复批模式：笔记已有 ## AI 批改 → 上次批改归档保留，并要求 AI 对比评价修订效果
+    const prevGrading = extractSection(content, '## AI 批改').trim();
+    let userPrefix = '';
+    if (prevGrading) {
+      const truncated = prevGrading.length > 4000 ? prevGrading.slice(0, 4000) + '\n……（已截断）' : prevGrading;
+      userPrefix =
+        '【复批模式】这是学生根据上一次批改建议修订后的版本。上一次批改记录如下：\n' +
+        truncated +
+        '\n\n请在批改时对比评价：① 上次指出的失分点/问题是否已解决（逐项说明）；' +
+        '② 修订是否引入新问题；③【4. 失分点总结】中明确标注相比上次的改进与残留问题。' +
+        '分数按当前真实水平给，不受上次分数影响。\n\n学生当前的作文内容如下：\n';
+    }
+
     const reply = await llm.chat({
       system: template.replace(/\s*$/, '') + JSON_INSTRUCTION,
       messages: [{
         role: 'user',
-        content: `以下是题目与作文${images.length ? `（含 ${images.length} 张图片，正文里的 [图片: 文件名] 是图片位置标记，请按图片内容理解题目）` : ''}：\n\n${text}`,
+        content: userPrefix + `以下是题目与作文${images.length ? `（含 ${images.length} 张图片，正文里的 [图片: 文件名] 是图片位置标记，请按图片内容理解题目）` : ''}：\n\n${text}`,
         images,
       }],
       maxTokens: 8000,
@@ -207,8 +220,13 @@ export class IeltsService {
     });
 
     const parsed = parseIeltsResult(reply);
-    const section = `## AI 批改\n\n> 批改日期：${todayStr()}${images.length ? ` · 含 ${images.length} 张图片` : ''}${skipped.length ? ` · ${skipped.length} 张跳过` : ''}\n\n${parsed.reply.trim()}\n`;
-    await this.vault.write(path, replaceSection(content, '## AI 批改', section));
+    const section = `## AI 批改\n\n> 批改日期：${todayStr()}${prevGrading ? ' · 复批（修订版）' : ''}${images.length ? ` · 含 ${images.length} 张图片` : ''}${skipped.length ? ` · ${skipped.length} 张跳过` : ''}\n\n${parsed.reply.trim()}\n`;
+    // 先归档旧批改为「## 历史批改」，再写入新批改（不存在则追加）
+    let base = content;
+    if (prevGrading) {
+      base = replaceSection(content, '## AI 批改', `## 历史批改（${todayStr()}）\n\n${prevGrading}\n`);
+    }
+    await this.vault.write(path, replaceSection(base, '## AI 批改', section));
     await this.appendLedger(parsed.scores, path);
     return { ...parsed, imageCount: images.length, skipped };
   }

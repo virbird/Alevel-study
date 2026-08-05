@@ -146,6 +146,21 @@ export async function run(): Promise<void> {
   const imgOnly = await svcNote.gradeNote('w/img-only.md', fakeLlm);
   check('文字少但有图片放行批改', imgOnly.imageCount === 1 && imgOnly.scores.overall === 6.5);
 
+  section('UT: 复批模式（修订归档与对比评价）');
+  const essayBody = 'Some people think schools should teach art as a compulsory subject, while others disagree. I believe art has clear educational value.';
+  vNote.files['w/rewrite.md'] = '# 作文\n\n' + essayBody + '\n';
+  await svcNote.gradeNote('w/rewrite.md', fakeLlm);
+  const pass1 = vNote.files['w/rewrite.md'];
+  check('首次批改：无历史批改小节', pass1.includes('## AI 批改') && !pass1.includes('## 历史批改'));
+  // 学生修订后重批
+  vNote.files['w/rewrite.md'] = pass1.replace(essayBody, essayBody + ' In addition, art fosters creativity.');
+  await svcNote.gradeNote('w/rewrite.md', fakeLlm);
+  const pass2 = vNote.files['w/rewrite.md'];
+  check('复批：旧批改归档为历史批改', pass2.includes(`## 历史批改（${todayStr()}）`));
+  eq('复批：AI 批改小节仍只有一个', pass2.split('## AI 批改').length, 2);
+  check('复批：请求含对比指令与上次批改', captured!.messages[0].content.includes('【复批模式】') && captured!.messages[0].content.includes('总分与分项评分'));
+  check('复批标记写入新批改头部', pass2.includes('复批（修订版）'));
+
   section('UT: 任意文本图片提取（教练会话用）+ 按路径载图');
   const vText = new FakeVault();
   vText.binaries['attach/题目.png'] = new Uint8Array([1, 1]);
