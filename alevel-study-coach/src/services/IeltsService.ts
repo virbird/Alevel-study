@@ -1,12 +1,23 @@
-import { parseFrontmatter, stringifyFrontmatter } from '../utils/markdown';
+import { parseFrontmatter, stringifyFrontmatter, parseTable, renderRow } from '../utils/markdown';
 import { todayStr } from '../utils/date';
 import type { VaultService } from './VaultService';
 import { ROOT } from './VaultService';
-import type { LlmClient } from '../llm/LlmClient';
+import type { LlmClient, ImagePart } from '../llm/LlmClient';
 
 export const IELTS_DIR = `${ROOT}/雅思`;
 export const ESSAY_DIR = `${IELTS_DIR}/作文`;
 export const EXPR_LIB_PATH = `${IELTS_DIR}/表达积累库.md`;
+export const GRADE_LEDGER_PATH = `${IELTS_DIR}/批改记录.md`;
+
+const IMG_MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
+const MAX_IMAGES = 4;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+export interface NoteExtract {
+  text: string;           // 去 frontmatter、图片替换为 [图片: 名] 标记后的正文
+  images: ImagePart[];    // 成功加载的图片（base64）
+  skipped: string[];      // 被跳过的图片（原因）
+}
 
 export interface EssayScores {
   date: string;
@@ -65,6 +76,124 @@ export class IeltsService {
   }
 
   /**
+   * 提取笔记正文与内嵌图片（支持 ![[xxx.png]] 与 ![](path) 两种语法）。
+   * 图片先按笔记所在目录解析，再尝试 vault 根；限制最多 4 张、单张 5MB、png/jpg/gif/webp。
+   */
+  async extractNoteImages(path: string, content: string): Promise<NoteExtract> {
+    const body = parseFrontmatter(content).body;
+    const noteDir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+    const images: ImagePart[] = [];
+    const skipped: string[] = [];
+
+    interface Hit { start: number; end: number; src: string }
+    const hits: Hit[] = [];
+    for (const m of body.matchAll(/!\[\[([^\]|#]+?)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g)) {
+      hits.push({ start: m.index!, end: m.index! + m[0].length, src: m[1].trim() });
+    }
+    for (const m of body.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)) {
+      hits.push({ start: m.index!, end: m.index! + m[0].length, src: m[1].trim() });
+    }
+    hits.sort((a, b) => a.start - b.start);
+
+    let text = '';
+    let cursor = 0;
+    for (const hit of hits) {
+      text += body.slice(cursor, hit.start);
+      cursor = hit.end;
+      const name = hit.src.split('/').pop() ?? hit.src;
+      const ext = (name.split('.').pop() ?? '').toLowerCase();
+      const mime = IMG_MIME[ext];
+      if (!mime) {
+        text += `[图片跳过: ${name}（不支持的格式）]`;
+        skipped.push(name);
+        continue;
+      }
+      if (images.length >= MAX_IMAGES) {
+        text += `[图片跳过: ${name}（超过 ${MAX_IMAGES} 张上限）]`;
+        skipped.push(name);
+        continue;
+      }
+      const candidates = [noteDir ? `${noteDir}/${hit.src}` : hit.src, hit.src];
+      let buf: ArrayBuffer | null = null;
+      for (const c of candidates) {
+        buf = await this.vault.readBinary(c);
+        if (buf) break;
+      }
+      if (!buf) {
+        text += `[图片未找到: ${name}]`;
+        skipped.push(name);
+        continue;
+      }
+      if (buf.byteLength > MAX_IMAGE_BYTES) {
+        text += `[图片跳过: ${name}（超过 5MB）]`;
+        skipped.push(name);
+        continue;
+      }
+      images.push({ mimeType: mime, data: arrayBufferToBase64(buf), name });
+      text += `[图片: ${name}]`;
+    }
+    text += body.slice(cursor);
+    return { text, images, skipped };
+  }
+
+  /**
+   * 批改任意笔记（题目+作文可在同一篇，可含图片）：
+   * 图片随请求发给视觉模型 → 六段输出回填笔记 ## AI 批改 小节 → 分数进台账。
+   */
+  async gradeNote(path: string, llm: LlmClient): Promise<GradeResult & { imageCount: number; skipped: string[] }> {
+    const content = await this.vault.read(path);
+    if (!content) throw new Error('笔记不存在');
+    const { text, images, skipped } = await this.extractNoteImages(path, content);
+    const textOnly = text.replace(/\[图片[^\]]*\]/g, '').trim();
+    if (textOnly.length < 40) throw new Error('笔记文字内容太少——请先写入题目与作文');
+
+    const template = (await this.vault.read(`${ROOT}/prompts/ielts-writing.md`)) ?? '';
+    if (!template) throw new Error('找不到 prompts/ielts-writing.md 模板');
+
+    const reply = await llm.chat({
+      system: template.replace(/\s*$/, '') + JSON_INSTRUCTION,
+      messages: [{
+        role: 'user',
+        content: `以下是题目与作文${images.length ? `（含 ${images.length} 张图片，正文里的 [图片: 文件名] 是图片位置标记，请按图片内容理解题目）` : ''}：\n\n${text}`,
+        images,
+      }],
+      maxTokens: 8000,
+      temperature: 0.3,
+    });
+
+    const parsed = parseIeltsResult(reply);
+    const section = `## AI 批改\n\n> 批改日期：${todayStr()}${images.length ? ` · 含 ${images.length} 张图片` : ''}${skipped.length ? ` · ${skipped.length} 张跳过` : ''}\n\n${parsed.reply.trim()}\n`;
+    await this.vault.write(path, replaceSection(content, '## AI 批改', section));
+    await this.appendLedger(parsed.scores, path);
+    return { ...parsed, imageCount: images.length, skipped };
+  }
+
+  /** 分数台账：任意笔记批改后追加一行（趋势数据源） */
+  private async appendLedger(s: GradeResult['scores'], notePath: string): Promise<void> {
+    const fmt = (v: number | null) => (v === null ? '-' : String(v));
+    const row = renderRow([todayStr(), notePath, fmt(s.overall), fmt(s.tr), fmt(s.cc), fmt(s.lr), fmt(s.gra)]);
+    await this.vault.append(GRADE_LEDGER_PATH, row);
+  }
+
+  private async loadLedger(): Promise<EssayScores[]> {
+    const content = await this.vault.read(GRADE_LEDGER_PATH);
+    if (!content) return [];
+    return parseTable(content)
+      .filter(r => r.length >= 7 && r[0] !== '日期' && r[1])
+      .map(r => ({
+        date: r[0],
+        task: 2,
+        overall: num(r[2]),
+        tr: num(r[3]),
+        cc: num(r[4]),
+        lr: num(r[5]),
+        gra: num(r[6]),
+        file: r[1],
+        title: (r[1].split('/').pop() ?? r[1]).replace(/\.md$/, ''),
+      }));
+  }
+
+  /**
    * 批改当前作文：读原文 → ys.md prompt + JSON 指令 → 回填批改与分数 → 返回表达列表。
    * 分数解析失败不阻塞：批改正文照常回填，分数留空。
    */
@@ -106,8 +235,16 @@ export class IeltsService {
     await this.vault.write(path, stringifyFrontmatter(data, body));
   }
 
-  /** 扫描所有作文笔记的分数（按日期升序） */
+  /** 扫描所有分数：台账（任意笔记批改）+ 作文目录笔记（旧流程），按日期升序 */
   async loadScores(): Promise<EssayScores[]> {
+    const ledger = await this.loadLedger();
+    const seen = new Set(ledger.map(s => s.file));
+    const notes = (await this.scanEssayNotes()).filter(s => !seen.has(s.file));
+    return [...ledger, ...notes].sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /** 旧流程：扫描 雅思/作文/ 目录笔记 frontmatter 分数 */
+  private async scanEssayNotes(): Promise<EssayScores[]> {
     const adapter = this.vault.adapter;
     if (!(await adapter.exists(ESSAY_DIR))) return [];
     const listing = await adapter.list(ESSAY_DIR);
@@ -116,7 +253,6 @@ export class IeltsService {
       const content = await this.vault.read(path);
       if (!content) continue;
       const { data } = parseFrontmatter(content);
-      const num = (v: unknown): number | null => (v === '' || v === undefined || Number.isNaN(Number(v)) ? null : Number(v));
       out.push({
         date: String(data.date ?? ''),
         task: Number(data.task) || 2,
@@ -129,7 +265,7 @@ export class IeltsService {
         title: path.split('/').pop()?.replace(/\.md$/, '') ?? '',
       });
     }
-    return out.sort((a, b) => a.date.localeCompare(b.date));
+    return out;
   }
 
   /** 距目标最远的短板维度（最近一篇为准） */
@@ -139,6 +275,20 @@ export class IeltsService {
     if (!filled.length) return null;
     return filled.sort((a, b) => a[1] - b[1])[0][0];
   }
+}
+
+function num(v: unknown): number | null {
+  return v === '' || v === undefined || v === null || v === '-' || Number.isNaN(Number(v)) ? null : Number(v);
+}
+
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
 
 /** 解析批改回复：剥离 JSON 块得正文 + 提取分数/表达 */

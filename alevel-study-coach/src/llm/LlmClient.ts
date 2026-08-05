@@ -1,11 +1,41 @@
 import { requestUrl } from 'obsidian';
-import type { ChatMessage, LlmSettings } from '../types';
+import type { LlmSettings } from '../types';
+
+export interface ImagePart {
+  mimeType: string;   // image/png | image/jpeg | image/gif | image/webp
+  data: string;       // base64
+  name?: string;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  images?: ImagePart[];
+}
 
 export interface ChatOptions {
   system?: string;
   messages: ChatMessage[];
   maxTokens?: number;
   temperature?: number;
+}
+
+/** OpenAI 兼容格式的多模态 user content（导出供测试） */
+export function toOpenAIUserContent(text: string, images?: ImagePart[]): unknown {
+  if (!images?.length) return text;
+  return [
+    { type: 'text', text },
+    ...images.map(img => ({ type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.data}` } })),
+  ];
+}
+
+/** Anthropic 格式的多模态 user content（导出供测试） */
+export function toAnthropicUserContent(text: string, images?: ImagePart[]): unknown {
+  if (!images?.length) return text;
+  return [
+    { type: 'text', text },
+    ...images.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mimeType, data: img.data } })),
+  ];
 }
 
 /**
@@ -27,9 +57,9 @@ export class LlmClient {
 
   private async chatOpenAICompat(opts: ChatOptions): Promise<string> {
     const url = this.settings.baseUrl.replace(/\/+$/, '') + '/chat/completions';
-    const messages: { role: string; content: string }[] = [];
+    const messages: { role: string; content: unknown }[] = [];
     if (opts.system) messages.push({ role: 'system', content: opts.system });
-    for (const m of opts.messages) messages.push({ role: m.role, content: m.content });
+    for (const m of opts.messages) messages.push({ role: m.role, content: toOpenAIUserContent(m.content, m.images) });
 
     const res = await requestUrl({
       url,
@@ -72,7 +102,7 @@ export class LlmClient {
         max_tokens: opts.maxTokens ?? 4096,
         temperature: opts.temperature ?? 0.7,
         system: opts.system,
-        messages: opts.messages.map(m => ({ role: m.role, content: m.content })),
+        messages: opts.messages.map(m => ({ role: m.role, content: toAnthropicUserContent(m.content, m.images) })),
       }),
       throw: false,
     });

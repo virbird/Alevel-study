@@ -1,43 +1,8 @@
-import { App, MarkdownRenderer, Modal, Notice, Setting, TFile } from 'obsidian';
+import { App, MarkdownRenderer, Modal, Notice } from 'obsidian';
 import type ALevelStudyCoachPlugin from '../main';
 import type { ExpressionRow } from '../services/ExpressionService';
 import type { ChatMessage } from '../types';
 import { extractJson } from '../llm/LlmClient';
-
-/** 新建作文笔记：选 Task 类型 + 标题 → 生成模板并打开 */
-export class NewEssayModal extends Modal {
-  constructor(app: App, private plugin: ALevelStudyCoachPlugin) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.addClass('asc-modal');
-    contentEl.createEl('h2', { text: '新建雅思作文笔记' });
-
-    let task = 2;
-    new Setting(contentEl).setName('Task 类型').addDropdown(d =>
-      d.addOptions({ '2': 'Task 2（议论文）', '1': 'Task 1（图表/书信）' }).setValue('2').onChange(v => { task = Number(v); }),
-    );
-    let title = '';
-    new Setting(contentEl).setName('标题（可留空）').addText(t =>
-      t.setPlaceholder('例：教育类 Agree or Disagree').onChange(v => { title = v; }),
-    );
-    new Setting(contentEl).addButton(b =>
-      b.setButtonText('创建并打开').setCta().onClick(async () => {
-        const path = await this.plugin.ielts.createEssayNote(task, title);
-        const file = this.app.vault.getAbstractFileByPath(path);
-        if (file instanceof TFile) await this.app.workspace.getLeaf(true).openFile(file);
-        new Notice('已创建：把作文粘贴到「## 原文」小节，然后「批改当前作文」');
-        this.close();
-      }),
-    );
-  }
-
-  onClose(): void {
-    this.contentEl.empty();
-  }
-}
 
 const EXPR_DRILL_CLOSE = '抽查结束。请汇总所有表达的结果，输出 exprResults JSON 代码块。';
 

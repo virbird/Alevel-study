@@ -43,15 +43,22 @@ export interface FakeVaultOptions {
  */
 export class FakeVault {
   files: Record<string, string>;
+  binaries: Record<string, Uint8Array>;
   conflict: boolean;
 
   constructor(opts: FakeVaultOptions = {}) {
     this.files = { ...(opts.seed ?? {}) };
+    this.binaries = {};
     this.conflict = opts.conflict ?? false;
   }
 
   async read(p: string): Promise<string | null> {
     return this.files[p] ?? null;
+  }
+
+  async readBinary(p: string): Promise<ArrayBuffer | null> {
+    const b = this.binaries[p];
+    return b ? b.buffer : null;
   }
 
   async write(p: string, c: string): Promise<void> {
@@ -79,6 +86,9 @@ export class FakeVault {
       async list(p: string): Promise<{ files: string[]; folders: string[] }> {
         const prefix = p.endsWith('/') ? p : p + '/';
         return { files: Object.keys(self.files).filter(f => f.startsWith(prefix)), folders: [] };
+      },
+      async readBinary(p: string): Promise<ArrayBuffer | null> {
+        return self.readBinary(p);
       },
     };
   }

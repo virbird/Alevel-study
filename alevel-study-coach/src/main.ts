@@ -17,7 +17,7 @@ import { MainView, VIEW_TYPE } from './ui/MainView';
 import { StudyCoachSettingTab } from './ui/SettingsTab';
 import { OnboardModal } from './ui/OnboardModal';
 import { CaptureModal } from './ui/CaptureModal';
-import { NewEssayModal, ExpressionDrillModal } from './ui/IeltsModals';
+import { ExpressionDrillModal } from './ui/IeltsModals';
 import { todayStr, daysBetween, isoWeekKey } from './utils/date';
 
 export interface CoachPluginSettings {
@@ -84,7 +84,6 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     this.addCommand({ id: 'open-coach', name: '打开学习教练', callback: () => this.activateView() });
     this.addCommand({ id: 'quick-capture', name: '随手记一条', callback: () => new CaptureModal(this.app, this).open() });
     this.addCommand({ id: 'onboarding', name: '冷启动：记录当前学习状况', callback: () => new OnboardModal(this.app, this).open() });
-    this.addCommand({ id: 'ielts-new-essay', name: '雅思：新建作文笔记', callback: () => new NewEssayModal(this.app, this).open() });
     this.addCommand({ id: 'ielts-grade', name: '雅思：批改当前作文', callback: () => void this.gradeActiveEssay() });
     this.addCommand({ id: 'ielts-expr-drill', name: '雅思：表达造句抽查', callback: () => void this.startExpressionDrill() });
     this.addCommand({ id: 'export-weekly', name: '导出本周周报', callback: () => void this.exportWeeklyReport() });
@@ -187,11 +186,11 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     }
   }
 
-  /** 批改当前打开的作文笔记：六段输出回填 + 分数入库 + 表达进积累库 */
+  /** 批改当前打开的任意笔记：题目+作文可同篇，可含图片；六段输出回填 ## AI 批改 + 分数进台账 */
   async gradeActiveEssay(): Promise<void> {
     const file = this.app.workspace.getActiveFile();
-    if (!file || !file.path.startsWith('StudyCoach/雅思/作文/')) {
-      new Notice('请先打开 雅思/作文/ 下的作文笔记（或用命令「雅思：新建作文笔记」）');
+    if (!file || !file.path.endsWith('.md')) {
+      new Notice('请先打开含作文的笔记（题目与作文可写在同一篇，支持图片）');
       return;
     }
     if (!this.llm.configured) {
@@ -200,11 +199,11 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     }
     new Notice('批改中……六段结构化输出约需几十秒');
     try {
-      const result = await this.ielts.gradeEssay(file.path, this.llm);
+      const result = await this.ielts.gradeNote(file.path, this.llm);
       const added = await this.expressions.appendAll(result.expressions, file.basename);
       const s = result.scores;
       new Notice(
-        `批改完成${s.overall !== null ? `：预估总分 ${s.overall}` : ''}${added ? `，${added} 条高分表达进积累库` : ''}`,
+        `批改完成${s.overall !== null ? `：预估总分 ${s.overall}` : ''}${result.imageCount ? `（含 ${result.imageCount} 张图片）` : ''}${added ? `，${added} 条高分表达进积累库` : ''}`,
         10000,
       );
     } catch (e) {

@@ -154,6 +154,14 @@ const STATS_TEMPLATE = `# 统计分析
 > 本期专项会注入教练 prompt；手动编辑下方区块同样生效。
 `;
 
+const GRADE_LEDGER_TEMPLATE = `# 批改记录
+
+> 任意笔记的雅思作文批改分数台账（趋势数据源）；作文笔记本身的 ## AI 批改 小节保存完整批改内容。
+
+| 日期 | 笔记 | 总分 | TR | CC | LR | GRA |
+|------|------|------|----|----|----|----|
+`;
+
 const EXPR_LIB_TEMPLATE = `# 表达积累库
 
 > 雅思作文批改后自动提取的高分表达（也可手动添加）。
@@ -210,6 +218,7 @@ export class VaultService {
       await this.ensureFile(`${ROOT}/记录/练习侧重.md`, PRACTICE_FOCUS_TEMPLATE);
       await this.ensureFile(`${ROOT}/记录/统计分析.md`, STATS_TEMPLATE);
       await this.ensureFile(`${ROOT}/雅思/表达积累库.md`, EXPR_LIB_TEMPLATE);
+      await this.ensureFile(`${ROOT}/雅思/批改记录.md`, GRADE_LEDGER_TEMPLATE);
 
       await this.seedPrompts();
     } catch (e) {
@@ -239,6 +248,12 @@ export class VaultService {
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!(file instanceof TFile)) return null;
     return this.app.vault.cachedRead(file);
+  }
+
+  /** 读取二进制文件（图片）；不存在返回 null */
+  async readBinary(path: string): Promise<ArrayBuffer | null> {
+    if (!(await this.app.vault.adapter.exists(path))) return null;
+    return this.app.vault.adapter.readBinary(path);
   }
 
   async write(path: string, content: string): Promise<void> {

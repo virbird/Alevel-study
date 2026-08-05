@@ -10,8 +10,7 @@ import { OnboardModal } from './OnboardModal';
 import { CaptureModal } from './CaptureModal';
 import { SessionHistoryModal, AttachPickerModal } from './PickerModals';
 import { SuggestionModal, DrillModal } from './InsightModals';
-import { NewEssayModal } from './IeltsModals';
-import { EXPR_LIB_PATH } from '../services/IeltsService';
+import { EXPR_LIB_PATH, GRADE_LEDGER_PATH } from '../services/IeltsService';
 import { oxbridgeGuidance } from '../services/ReportService';
 import type { TermEntry } from '../services/TermService';
 
@@ -125,7 +124,7 @@ export class MainView extends ItemView {
     const sc = el.createDiv({ cls: 'asc-card' });
     sc.createEl('div', { text: `雅思写作进展（目标 ${profile.ielts.target}，主攻 ${profile.ielts.focus}）`, cls: 'asc-card-title' });
     if (!scores.length) {
-      sc.createEl('div', { text: '还没有批改记录：命令「雅思：新建作文笔记」→ 粘贴作文 →「批改当前作文」。', cls: 'asc-hint' });
+      sc.createEl('div', { text: '还没有批改记录：把题目和作文写进任意笔记（可含图片）→ 打开后「批改当前作文」。', cls: 'asc-hint' });
     } else {
       for (const s of scores.slice(-6).reverse()) {
         const dims = `TR ${s.tr ?? '-'} / CC ${s.cc ?? '-'} / LR ${s.lr ?? '-'} / GRA ${s.gra ?? '-'}`;
@@ -167,10 +166,10 @@ export class MainView extends ItemView {
     // 4. 作文工作流入口
     const wc = el.createDiv({ cls: 'asc-card' });
     wc.createEl('div', { text: '作文工作流', cls: 'asc-card-title' });
-    wc.createEl('div', { text: '新建作文笔记 → 把作文粘到「## 原文」→ 批改当前作文：六段输出回填笔记，分数入库，高分表达进积累库。', cls: 'asc-hint' });
+    wc.createEl('div', { text: '把题目和作文写进任意笔记（同一篇即可，支持 ![[图片]] 引用）→ 打开该笔记 → 批改当前作文：六段输出写入笔记「## AI 批改」小节，分数进台账，高分表达进积累库。', cls: 'asc-hint' });
     const wbtns = wc.createDiv({ cls: 'asc-row' });
-    wbtns.createEl('button', { text: '新建作文笔记', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => new NewEssayModal(this.app, this.plugin).open());
-    wbtns.createEl('button', { text: '批改当前作文', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.plugin.gradeActiveEssay());
+    wbtns.createEl('button', { text: '批改当前作文', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.plugin.gradeActiveEssay());
+    wbtns.createEl('button', { text: '打开批改记录', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => this.openFile(GRADE_LEDGER_PATH));
     if (scores.length) {
       const last = scores[scores.length - 1].file;
       wbtns.createEl('button', { text: '打开最近一篇', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => this.openFile(last));

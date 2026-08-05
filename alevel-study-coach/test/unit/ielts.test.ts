@@ -1,7 +1,10 @@
 // UT：IeltsService（解析/笔记/趋势）与 ExpressionService（去重/调度/升降档）
 import { section, check, eq, FakeVault } from '../harness';
-import { IeltsService, parseIeltsResult, ESSAY_DIR, EXPR_LIB_PATH } from '../../src/services/IeltsService';
+import { IeltsService, parseIeltsResult, ESSAY_DIR, EXPR_LIB_PATH, GRADE_LEDGER_PATH } from '../../src/services/IeltsService';
 import { ExpressionService, INTERVALS } from '../../src/services/ExpressionService';
+import { toOpenAIUserContent, toAnthropicUserContent } from '../../src/llm/LlmClient';
+import type { ChatOptions } from '../../src/llm/LlmClient';
+import type { LlmClient } from '../../src/llm/LlmClient';
 import { todayStr, addDays } from '../../src/utils/date';
 
 const REPLY_OK = [
@@ -75,5 +78,65 @@ export async function run(): Promise<void> {
   check('已掌握不再到期', (await es.due()).length === 0);
   check('不存在的表达返回 null', await es.applyResult('不存在', true) === null);
   check('抽查提示词含到期表达', es.buildDrillPrompt([{ expr: 'x', type: '高分词汇', source: '', date: '', interval: 0, next: '', status: '学习中' }]).includes('x'));
-  void ESSAY_DIR;
+
+  section('UT: 多模态 content 构建');
+  const imgs = [{ mimeType: 'image/png', data: 'QUJD', name: 'a.png' }];
+  eq('无图时 content 为纯文本', toOpenAIUserContent('hello'), 'hello');
+  const oai = toOpenAIUserContent('题目', imgs) as { type: string }[];
+  eq('OpenAI 多模态结构', [oai[0].type, oai[1].type], ['text', 'image_url']);
+  const ant = toAnthropicUserContent('题目', imgs) as { type: string }[];
+  eq('Anthropic 多模态结构', [ant[0].type, ant[1].type], ['text', 'image']);
+
+  section('UT: 笔记图片提取');
+  const vImg = new FakeVault();
+  vImg.binaries['notes/img1.png'] = new Uint8Array([1, 2, 3]);
+  vImg.binaries['notes/sub/img2.jpg'] = new Uint8Array([4, 5, 6]);
+  vImg.files['notes/my-essay.md'] = '---\ntitle: t\n---\n\n# 作文\n\n题目见图：![[img1.png]]\n\n第二张：![](sub/img2.jpg)\n\n丢了：![[ghost.png]]\n\n不支持：![[pic.bmp]]\n';
+  const svcImg = new IeltsService(vImg.asService());
+  const ext = await svcImg.extractNoteImages('notes/my-essay.md', vImg.files['notes/my-essay.md']);
+  eq('成功加载 2 张图', ext.images.map(i => i.name), ['img1.png', 'img2.jpg']);
+  eq('图片 base64 编码', ext.images[0].data, btoa(String.fromCharCode(1, 2, 3)));
+  check('正文替换为位置标记', ext.text.includes('[图片: img1.png]') && ext.text.includes('[图片: img2.jpg]'));
+  check('正文已去 frontmatter', !ext.text.includes('title: t'));
+  eq('跳过清单（丢失+格式）', ext.skipped.sort(), ['ghost.png', 'pic.bmp']);
+  check('标记中含跳过原因', ext.text.includes('[图片未找到: ghost.png]') && ext.text.includes('不支持的格式'));
+  // 上限：5 张图只取前 4
+  const vMany = new FakeVault();
+  for (let i = 1; i <= 5; i++) vMany.binaries[`m/p${i}.png`] = new Uint8Array([i]);
+  vMany.files['m/many.md'] = Array.from({ length: 5 }, (_, i) => `![[p${i + 1}.png]]`).join('\n');
+  const extMany = await new IeltsService(vMany.asService()).extractNoteImages('m/many.md', vMany.files['m/many.md']);
+  eq('图片上限 4 张', extMany.images.length, 4);
+  eq('第 5 张进跳过清单', extMany.skipped, ['p5.png']);
+
+  section('UT: gradeNote 任意笔记批改 + 台账');
+  const vNote = new FakeVault({ seed: {
+    'StudyCoach/prompts/ielts-writing.md': '你是资深雅思写作考官……',
+    [GRADE_LEDGER_PATH]: '# 批改记录\n\n| 日期 | 笔记 | 总分 | TR | CC | LR | GRA |\n|------|------|------|----|----|----|----|\n',
+    [ESSAY_DIR + '/2026-01-01-task2-legacy.md']: `---\ntask: "2"\ndate: "2026-01-01"\noverall: 6\ntr: 6\ncc: 6\nlr: 6\ngra: 6\n---\n\n# legacy\n`,
+  } });
+  vNote.binaries['w/q1.png'] = new Uint8Array([9]);
+  vNote.files['w/essay1.md'] = '---\ntags: ielts\n---\n\n# 我的作文\n\n题目：![[q1.png]]\n\nSome people believe that university education should be free for everyone, while others think students should pay tuition fees for their higher education. I partly agree.';
+  const svcNote = new IeltsService(vNote.asService());
+  let captured: ChatOptions | null = null;
+  const fakeLlm = { chat: async (opts: ChatOptions) => { captured = opts; return REPLY_OK; }, configured: true } as unknown as LlmClient;
+  const gres = await svcNote.gradeNote('w/essay1.md', fakeLlm);
+  eq('分数解析', gres.scores.overall, 6.5);
+  eq('图片随请求发送', captured!.messages[0].images?.length, 1);
+  check('提问含图片位置提示', captured!.messages[0].content.includes('[图片: q1.png]') && captured!.messages[0].content.includes('图片'));
+  const gradedNote = vNote.files['w/essay1.md'];
+  check('批改回填到 ## AI 批改 小节', gradedNote.includes('## AI 批改') && gradedNote.includes('总分与分项评分'));
+  check('frontmatter 未被破坏', gradedNote.startsWith('---') && gradedNote.includes('tags: ielts'));
+  eq('台账追加一行', vNote.files[GRADE_LEDGER_PATH].split('\n').filter(l => l.startsWith(`| ${todayStr()}`)).length, 1);
+  // 重复批改：小节替换不叠加，台账再追一行（重写提升轨迹）
+  await svcNote.gradeNote('w/essay1.md', fakeLlm);
+  eq('重复批改只有一个小节', vNote.files['w/essay1.md'].split('## AI 批改').length, 2);
+  // 趋势合并：台账 + 旧作文目录
+  const merged = await svcNote.loadScores();
+  eq('趋势合并台账与旧笔记', merged.length, 3);
+  check('台账条目指向原笔记', merged.some(s => s.file === 'w/essay1.md' && s.overall === 6.5));
+  // 文字太少拦截
+  vNote.files['w/short.md'] = '太短了。';
+  let shortThrew = false;
+  try { await svcNote.gradeNote('w/short.md', fakeLlm); } catch { shortThrew = true; }
+  check('文字太少拦截批改', shortThrew);
 }
