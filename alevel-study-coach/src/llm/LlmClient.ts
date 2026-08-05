@@ -1,17 +1,10 @@
 import { requestUrl } from 'obsidian';
-import type { LlmSettings } from '../types';
+import type { LlmSettings, ImagePart, ChatMessage } from '../types';
+import { streamRequest } from '../utils/streamRequest';
+import { parseOpenAISSE, parseClaudeSSE } from './sseParser';
+import type { ChatStreamEvent } from './sseParser';
 
-export interface ImagePart {
-  mimeType: string;   // image/png | image/jpeg | image/gif | image/webp
-  data: string;       // base64
-  name?: string;
-}
-
-export interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-  images?: ImagePart[];
-}
+export type { ImagePart, ChatMessage };
 
 export interface ChatOptions {
   system?: string;
@@ -72,6 +65,105 @@ export class LlmClient {
   async chat(opts: ChatOptions): Promise<string> {
     if (this.settings.provider === 'anthropic') return this.chatAnthropic(opts);
     return this.chatOpenAICompat(opts);
+  }
+
+  /** 流式对话：逐块产出 text_delta；教练会话用，其他长任务仍用 chat() */
+  async *chatStream(opts: ChatOptions): AsyncGenerator<ChatStreamEvent> {
+    if (this.settings.provider === 'anthropic') yield* this.streamAnthropic(opts);
+    else yield* this.streamOpenAICompat(opts);
+  }
+
+  private async *streamOpenAICompat(opts: ChatOptions): AsyncGenerator<ChatStreamEvent> {
+    const url = this.settings.baseUrl.replace(/\/+$/, '') + '/chat/completions';
+    const messages: { role: string; content: unknown }[] = [];
+    if (opts.system) messages.push({ role: 'system', content: opts.system });
+    for (const m of opts.messages) messages.push({ role: m.role, content: toOpenAIUserContent(m.content, m.images) });
+    yield* this.runSSE(
+      {
+        url,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.settings.apiKey}` },
+        body: JSON.stringify({
+          model: this.settings.model,
+          messages,
+          max_tokens: opts.maxTokens ?? 4096,
+          temperature: opts.temperature ?? 0.7,
+          stream: true,
+        }),
+        signal: opts.signal,
+      },
+      parseOpenAISSE,
+    );
+  }
+
+  private async *streamAnthropic(opts: ChatOptions): AsyncGenerator<ChatStreamEvent> {
+    const url = this.settings.baseUrl.replace(/\/+$/, '') + '/v1/messages';
+    yield* this.runSSE(
+      {
+        url,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': this.settings.apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: this.settings.model,
+          max_tokens: opts.maxTokens ?? 4096,
+          temperature: opts.temperature ?? 0.7,
+          system: opts.system,
+          messages: opts.messages.map(m => ({ role: m.role, content: toAnthropicUserContent(m.content, m.images) })),
+          stream: true,
+        }),
+        signal: opts.signal,
+      },
+      parseClaudeSSE,
+    );
+  }
+
+  /** SSE 通用消费：块到达 → 解析 → 按序产出；处理半行缓冲与流错误 */
+  private async *runSSE(
+    req: { url: string; method: string; headers: Record<string, string>; body: string; signal?: AbortSignal },
+    parse: (buffer: string) => { events: ChatStreamEvent[]; remaining: string },
+  ): AsyncGenerator<ChatStreamEvent> {
+    let buffer = '';
+    const queue: ChatStreamEvent[] = [];
+    let notify: (() => void) | null = null;
+    let finished = false;
+    // 用对象持有错误，避免闭包赋值被 TS 控制流分析窄化为 never
+    const state: { error: Error | null } = { error: null };
+
+    streamRequest(req, chunk => {
+      buffer += chunk;
+      const r = parse(buffer);
+      buffer = r.remaining;
+      queue.push(...r.events);
+      if (notify) { notify(); notify = null; }
+    })
+      .then(() => {
+        if (buffer.trim()) {
+          const r = parse(buffer + '\n');
+          queue.push(...r.events);
+        }
+        finished = true;
+        if (notify) { notify(); notify = null; }
+      })
+      .catch((e: unknown) => {
+        state.error = e instanceof Error ? e : new Error(String(e));
+        finished = true;
+        if (notify) { notify(); notify = null; }
+      });
+
+    let i = 0;
+    while (!finished || i < queue.length) {
+      if (i < queue.length) {
+        yield queue[i++];
+      } else {
+        await new Promise<void>(resolve => { notify = resolve; });
+      }
+    }
+    if (state.error) yield { type: 'error', message: state.error.message };
   }
 
   private async chatOpenAICompat(opts: ChatOptions): Promise<string> {

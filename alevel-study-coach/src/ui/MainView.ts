@@ -8,11 +8,12 @@ import { parseFrontmatter } from '../utils/markdown';
 import { ROOT } from '../services/VaultService';
 import { OnboardModal } from './OnboardModal';
 import { CaptureModal } from './CaptureModal';
-import { SessionHistoryModal, AttachPickerModal } from './PickerModals';
+import { SessionHistoryModal, AttachPickerModal, ImagePickerModal } from './PickerModals';
 import { SuggestionModal, DrillModal } from './InsightModals';
 import { EXPR_LIB_PATH, GRADE_LEDGER_PATH } from '../services/IeltsService';
 import { oxbridgeGuidance } from '../services/ReportService';
 import type { TermEntry } from '../services/TermService';
+import type { ImagePart } from '../types';
 
 export const VIEW_TYPE = 'alevel-study-coach-view';
 
@@ -42,6 +43,8 @@ export class MainView extends ItemView {
   private savedCount = 0;
   /** 本轮会话引用的文档 */
   private attachments: { path: string; name: string }[] = [];
+  /** 待随下一条消息发送的图片（vault 路径） */
+  private pendingImages: string[] = [];
   /** 独立思考计时器（提示词门槛的产品硬约束，仅会话内可用） */
   private timerDeadline = 0;
   private timerMinutes = 0;
@@ -397,6 +400,12 @@ export class MainView extends ItemView {
     bar.createEl('button', { text: '存档', cls: 'asc-btn' }).addEventListener('click', () => void this.archiveIfNeeded(true));
     bar.createEl('button', { text: '历史', cls: 'asc-btn' }).addEventListener('click', () => this.openHistory());
     bar.createEl('button', { text: '＋文档', cls: 'asc-btn' }).addEventListener('click', () => this.openAttachPicker());
+    bar.createEl('button', { text: '＋图片', cls: 'asc-btn' }).addEventListener('click', () =>
+      new ImagePickerModal(this.app, this.pendingImages, f => {
+        this.pendingImages.push(f.path);
+        this.render();
+      }).open(),
+    );
     bar.createEl('button', { text: '⏱ 独立思考', cls: 'asc-btn' + (this.systemPrompt ? '' : ' asc-btn-disabled') }).addEventListener('click', () => void this.startTimer());
 
     if (this.timerDeadline > Date.now()) {
@@ -425,6 +434,18 @@ export class MainView extends ItemView {
         chip.createSpan({ text: ' ✕', cls: 'asc-chip-x' }).addEventListener('click', () => {
           this.attachments = this.attachments.filter(x => x.path !== a.path);
           void this.rebuildSystemPrompt().then(() => this.render());
+        });
+      }
+    }
+
+    if (this.pendingImages.length) {
+      const chips = el.createDiv({ cls: 'asc-chips' });
+      for (const p of this.pendingImages) {
+        const name = p.split('/').pop() ?? p;
+        const chip = chips.createSpan({ cls: 'asc-chip', text: `🖼 ${name}（随下条消息发送）` });
+        chip.createSpan({ text: ' ✕', cls: 'asc-chip-x' }).addEventListener('click', () => {
+          this.pendingImages = this.pendingImages.filter(x => x !== p);
+          this.render();
         });
       }
     }
@@ -539,17 +560,57 @@ export class MainView extends ItemView {
     // 思考凭证：计时跑满后的第一条消息带上标注，供教练按思维题模式验证
     const content = this.thinkCredit > 0 ? text + thinkAnnotation(this.thinkCredit) : text;
     this.thinkCredit = 0;
-    this.messages.push({ role: 'user', content });
+
+    // 图片：消息内 ![[x.png]] embed + 待发送附加图片；失败不阻塞文本发送
+    let msgText = content;
+    const images: ImagePart[] = [];
+    try {
+      const ext = await this.plugin.ielts.extractTextImages(content);
+      msgText = ext.text;
+      images.push(...ext.images);
+      if (this.pendingImages.length) {
+        images.push(...(await this.plugin.ielts.loadImageParts(this.pendingImages)));
+        this.pendingImages = [];
+      }
+    } catch {
+      // 图片加载失败不阻塞文本发送
+    }
+
+    this.messages.push({ role: 'user', content: msgText, images: images.length ? images.slice(0, 4) : undefined });
     this.busy = true;
     this.render();
+
+    // 流式气泡：增量显示纯文本，完成后统一渲染 markdown
+    const chatEl = this.bodyEl.querySelector('.asc-chat');
+    let bubble: HTMLElement | null = null;
+    if (chatEl) {
+      bubble = chatEl.createDiv({ cls: 'asc-msg asc-msg-assistant' });
+      bubble.setText('……');
+    }
+
+    let raw = '';
+    let lastPaint = 0;
     try {
-      const reply = await this.plugin.llm.chat({
+      for await (const ev of this.plugin.llm.chatStream({
         system: this.systemPrompt,
         messages: this.messages,
         maxTokens: 4096,
-      });
-      this.messages.push({ role: 'assistant', content: reply });
-      await this.handleReplySideEffects(reply);
+      })) {
+        if (ev.type === 'text_delta') {
+          raw += ev.text;
+          const now = Date.now();
+          if (bubble && chatEl && now - lastPaint > 80) {
+            bubble.setText(raw);
+            chatEl.scrollTop = chatEl.scrollHeight;
+            lastPaint = now;
+          }
+        } else if (ev.type === 'error') {
+          throw new Error(ev.message);
+        }
+      }
+      if (!raw.trim()) throw new Error('模型返回内容为空');
+      this.messages.push({ role: 'assistant', content: raw });
+      await this.handleReplySideEffects(raw);
     } catch (e) {
       new Notice(`请求失败：${e instanceof Error ? e.message : String(e)}`, 10000);
       this.messages.pop(); // 撤回未成功的用户消息，方便重试

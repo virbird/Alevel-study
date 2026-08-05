@@ -82,6 +82,52 @@ export class IeltsService {
   async extractNoteImages(path: string, content: string): Promise<NoteExtract> {
     const body = parseFrontmatter(content).body;
     const noteDir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+    return this.extractImages(body, async src => {
+      const candidates = [noteDir ? `${noteDir}/${src}` : src, src];
+      for (const c of candidates) {
+        const buf = await this.vault.readBinary(c);
+        if (buf) return buf;
+      }
+      return null;
+    });
+  }
+
+  /**
+   * 从任意文本（如聊天消息）提取图片引用：按文件名在整个 vault 内查找
+   * （Obsidian embed 的最短路径语义简化为 basename 匹配，精确路径优先）。
+   */
+  async extractTextImages(text: string): Promise<NoteExtract> {
+    const listing = await this.vault.adapter.list('');
+    const byPath = new Set(listing.files);
+    const byBase = new Map<string, string>();
+    for (const p of listing.files) {
+      const b = p.split('/').pop();
+      if (b && !byBase.has(b)) byBase.set(b, p);
+    }
+    return this.extractImages(text, async src => {
+      const resolved = byPath.has(src) ? src : byBase.get(src.split('/').pop() ?? src);
+      if (!resolved) return null;
+      return this.vault.readBinary(resolved);
+    });
+  }
+
+  /** 按 vault 路径批量加载图片（附加发送用），同样受格式/大小/数量限制 */
+  async loadImageParts(paths: string[]): Promise<ImagePart[]> {
+    const out: ImagePart[] = [];
+    for (const p of paths) {
+      if (out.length >= MAX_IMAGES) break;
+      const name = p.split('/').pop() ?? p;
+      const mime = IMG_MIME[(name.split('.').pop() ?? '').toLowerCase()];
+      if (!mime) continue;
+      const buf = await this.vault.readBinary(p);
+      if (!buf || buf.byteLength > MAX_IMAGE_BYTES) continue;
+      out.push({ mimeType: mime, data: arrayBufferToBase64(buf), name });
+    }
+    return out;
+  }
+
+  /** 共用核心：扫描图片引用 → 逐个 resolve → 限制与标记 */
+  private async extractImages(body: string, resolve: (src: string) => Promise<ArrayBuffer | null>): Promise<NoteExtract> {
     const images: ImagePart[] = [];
     const skipped: string[] = [];
 
@@ -113,12 +159,7 @@ export class IeltsService {
         skipped.push(name);
         continue;
       }
-      const candidates = [noteDir ? `${noteDir}/${hit.src}` : hit.src, hit.src];
-      let buf: ArrayBuffer | null = null;
-      for (const c of candidates) {
-        buf = await this.vault.readBinary(c);
-        if (buf) break;
-      }
+      const buf = await resolve(hit.src);
       if (!buf) {
         text += `[图片未找到: ${name}]`;
         skipped.push(name);

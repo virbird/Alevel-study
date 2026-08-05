@@ -136,7 +136,7 @@ export async function run(): Promise<void> {
   const merged = await svcNote.loadScores();
   eq('趋势合并台账与旧笔记', merged.length, 3);
   check('台账条目指向原笔记', merged.some(s => s.file === 'w/essay1.md' && s.overall === 6.5));
-  // 拦截条件：文字极少且无图片；有图片则放行（题目和作文可能全在图片里）
+  // 文字太少拦截（有图片则放行）
   vNote.files['w/short.md'] = '太短了。';
   let shortThrew = false;
   try { await svcNote.gradeNote('w/short.md', fakeLlm); } catch { shortThrew = true; }
@@ -145,4 +145,17 @@ export async function run(): Promise<void> {
   vNote.files['w/img-only.md'] = '如图：\n![[q2.png]]';
   const imgOnly = await svcNote.gradeNote('w/img-only.md', fakeLlm);
   check('文字少但有图片放行批改', imgOnly.imageCount === 1 && imgOnly.scores.overall === 6.5);
+
+  section('UT: 任意文本图片提取（教练会话用）+ 按路径载图');
+  const vText = new FakeVault();
+  vText.binaries['attach/题目.png'] = new Uint8Array([1, 1]);
+  vText.binaries['any/deep/手写.jpg'] = new Uint8Array([2, 2]);
+  const svcText = new IeltsService(vText.asService());
+  const msg = '这道题见图：![[题目.png]]，另外 ![](any/deep/手写.jpg)，丢了 ![[没有.png]]';
+  const extText = await svcText.extractTextImages(msg);
+  eq('basename 与精确路径都解析到', extText.images.map(i => i.name).sort(), ['手写.jpg', '题目.png']);
+  check('标记替换与未找到提示', extText.text.includes('[图片: 题目.png]') && extText.text.includes('[图片未找到: 没有.png]'));
+  const parts = await svcText.loadImageParts(['attach/题目.png', '不存在.png']);
+  eq('按路径载图跳过缺失', parts.map(p => p.name), ['题目.png']);
+  eq('载图 base64 正确', parts[0].data, btoa(String.fromCharCode(1, 1)));
 }

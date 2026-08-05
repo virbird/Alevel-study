@@ -88,3 +88,54 @@ export class AttachPickerModal extends Modal {
     this.contentEl.empty();
   }
 }
+
+const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+
+/** 图片选择器：从 vault 选图片附加到教练会话的下一条消息 */
+export class ImagePickerModal extends Modal {
+  constructor(app: App, private exclude: string[], private onPick: (f: TFile) => void) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.addClass('asc-modal');
+    contentEl.createEl('h2', { text: '附加图片' });
+    contentEl.createEl('p', { text: '选择 vault 中的图片（png/jpg/gif/webp，单张 ≤5MB，每条消息最多 4 张），随下一条消息发给模型。' });
+
+    const filter = contentEl.createEl('input', { attr: { placeholder: '搜索图片文件名……', type: 'text' } });
+    filter.style.width = '100%';
+    const list = contentEl.createDiv({ cls: 'asc-picker-list' });
+
+    const draw = () => {
+      list.empty();
+      const kw = filter.value.trim().toLowerCase();
+      const files = this.app.vault
+        .getFiles()
+        .filter(f => IMAGE_EXTS.includes(f.extension.toLowerCase()))
+        .filter(f => !this.exclude.includes(f.path))
+        .filter(f => !kw || f.path.toLowerCase().includes(kw))
+        .sort((a, b) => b.stat.mtime - a.stat.mtime)
+        .slice(0, 30);
+      if (!files.length) {
+        list.createDiv({ text: '没有匹配的图片', cls: 'asc-empty' });
+        return;
+      }
+      for (const f of files) {
+        const item = list.createDiv({ cls: 'asc-picker-item' });
+        item.createSpan({ text: f.path });
+        item.addEventListener('click', () => {
+          this.onPick(f);
+          this.close();
+        });
+      }
+    };
+    filter.addEventListener('input', draw);
+    draw();
+    filter.focus();
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}

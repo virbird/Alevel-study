@@ -84,8 +84,12 @@ export class FakeVault {
         return Object.keys(self.files).some(f => f === p || f.startsWith(p + '/'));
       },
       async list(p: string): Promise<{ files: string[]; folders: string[] }> {
+        if (p === '' || p === '/') {
+          return { files: [...Object.keys(self.files), ...Object.keys(self.binaries)], folders: [] };
+        }
         const prefix = p.endsWith('/') ? p : p + '/';
-        return { files: Object.keys(self.files).filter(f => f.startsWith(prefix)), folders: [] };
+        const all = [...Object.keys(self.files), ...Object.keys(self.binaries)];
+        return { files: all.filter(f => f.startsWith(prefix)), folders: [] };
       },
       async readBinary(p: string): Promise<ArrayBuffer | null> {
         return self.readBinary(p);
