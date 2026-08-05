@@ -166,10 +166,9 @@ export class MainView extends ItemView {
     // 0. 批改任务卡片（首页顶部，后台任务不阻塞操作）
     this.renderGradingTask(el);
 
-    // 1. 建议卡片（有才显示，不打断不强推）
+    // 1. 待处理建议卡片（有才显示，最多 3 张）
     if (pending.length) {
-      el.createEl('div', { text: `📌 弱点信号（${pending.length} 张待处理建议卡片）`, cls: 'asc-card-title' });
-      for (const s of pending.slice(0, 5)) {
+      for (const s of pending.slice(0, 3)) {
         const card = el.createDiv({ cls: 'asc-card asc-suggest-card' });
         card.createEl('div', { text: s.title, cls: 'asc-card-title' });
         card.createEl('div', { text: `${s.kind} · ${s.created}`, cls: 'asc-muted' });
@@ -183,127 +182,70 @@ export class MainView extends ItemView {
           this.render();
         });
       }
+      if (pending.length > 3) el.createEl('div', { text: `… 还有 ${pending.length - 3} 张待处理建议卡片`, cls: 'asc-muted' });
     } else {
       el.createDiv({ text: '暂无待处理的建议卡片——弱点信号达到阈值时会自动出现在这里。', cls: 'asc-hint' });
     }
 
-    // 2. 弱点雷达（近 14 天，纯本地统计）
+    // 2. 待复查入口（有才显示，一行）
     const radar = await this.plugin.engine.radar(entries, 14);
-    const rc = el.createDiv({ cls: 'asc-card' });
-    rc.createEl('div', { text: `弱点雷达（近 ${radar.windowDays} 天）`, cls: 'asc-card-title' });
-    rc.createEl('div', {
-      text: `未消除失分点 ${radar.unresolvedCount} │ 待复查 ${radar.dueCount}`,
-      cls: 'asc-row asc-strong',
-    });
-    if (radar.topicHeat.length) {
-      rc.createEl('div', { text: '提问热点：' + radar.topicHeat.map(h => `${h.topic} ×${h.count}`).join(' · '), cls: 'asc-row' });
+    if (radar.dueCount > 0) {
+      const dueCard = el.createDiv({ cls: 'asc-card asc-due-card' });
+      const dueRow = dueCard.createDiv({ cls: 'asc-row' });
+      dueRow.createSpan({ text: `📌 ${radar.dueCount} 条失分点待复查`, cls: 'asc-strong' });
+      dueRow.createEl('button', { text: '去处理', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => { this.tab = 'review'; this.render(); });
+    } else if (!pending.length) {
+      el.createEl('div', { text: '✓ 今天没有待办——主学习在线下，需要协助时随时来。', cls: 'asc-hint' });
     }
-    if (radar.codeCounts.length) {
-      rc.createEl('div', {
-        text: '失分码：' + radar.codeCounts.map(c => `${c.code}${'▮'.repeat(Math.min(c.count, 8))}${c.count}`).join('  '),
+
+    // 3. 状态概览（一张紧凑卡片，每域一行；详细数据去「记录」页签）
+    const scores = await this.plugin.ielts.loadScores();
+    const terms = await this.plugin.terms.load();
+    const exprs = await this.plugin.expressions.load();
+    const dueExprs = await this.plugin.expressions.due();
+    const ov = el.createDiv({ cls: 'asc-card' });
+    ov.createEl('div', { text: '状态概览', cls: 'asc-card-title' });
+    if (scores.length) {
+      const latest = scores[scores.length - 1];
+      const gap = latest.overall !== null ? profile.ielts.target - latest.overall : null;
+      const weak = this.plugin.ielts.weakestDimension(latest);
+      ov.createEl('div', {
+        text: `📝 雅思 最近 ${latest.overall ?? '-'}${gap !== null && gap > 0 ? ` · 距目标差 ${gap.toFixed(1)}` : gap !== null ? ' · 达标 🎉' : ''}${weak ? ` · 短板 ${weak}` : ''} · 表达库 ${exprs.length}${dueExprs.length ? `（到期 ${dueExprs.length}）` : ''}`,
         cls: 'asc-row',
       });
+    } else {
+      ov.createEl('div', { text: `📝 雅思 目标 ${profile.ielts.target}（${profile.ielts.focus}）· 还没有批改记录`, cls: 'asc-row' });
     }
-    if (radar.confusionDist.length) {
-      rc.createEl('div', { text: '困惑类型：' + radar.confusionDist.map(c => `${c.confusion} ×${c.count}`).join(' · '), cls: 'asc-row' });
-    }
-    // 表达码双周环比（DV/CL/LK 是当前最高优先级弱点，下降才是目标）
     const curCodes = this.plugin.engine.codeCountsRange(entries, -1, 14);
     const prevCodes = this.plugin.engine.codeCountsRange(entries, 14, 28);
     const cnt = (list: { code: string; count: number }[], c: string) => list.find(x => x.code === c)?.count ?? 0;
     const exprTrend = ['DV', 'CL', 'LK'].map(c => {
       const a = cnt(curCodes, c);
       const b = cnt(prevCodes, c);
-      const arrow = a < b ? '↓' : a === b ? '→' : '↑';
-      return `${c} ${b}→${a} ${arrow}`;
-    }).join('  ');
-    rc.createEl('div', { text: `表达码环比（近两周 vs 前两周）：${exprTrend}`, cls: 'asc-row' });
+      return `${c} ${b}→${a} ${a < b ? '↓' : a === b ? '→' : '↑'}`;
+    }).join(' · ');
     const relapse = entries.filter(e => e.recurrence >= 2 && e.status !== '已消除')
-      .sort((a, b) => b.recurrence - a.recurrence).slice(0, 3);
-    if (relapse.length) {
-      rc.createEl('div', { text: '复发热点：' + relapse.map(e => `${e.topic} ×${e.recurrence}（${e.code}）`).join(' · '), cls: 'asc-row' });
-    }
-    if (!radar.topicHeat.length && !radar.codeCounts.length) {
-      rc.createEl('div', { text: '近两周数据还太少——每次结题都会自动积累提问记录与失分记录。', cls: 'asc-hint' });
-    }
-
-    // 3. 术语与快捷动作
-    const terms = await this.plugin.terms.load();
+      .sort((a, b) => b.recurrence - a.recurrence).slice(0, 2);
+    ov.createEl('div', {
+      text: `🎯 弱点 未消除 ${radar.unresolvedCount} · 表达码 ${exprTrend}${relapse.length ? ` · 复发：${relapse.map(e => `${e.topic}×${e.recurrence}`).join('、')}` : ''}`,
+      cls: 'asc-row',
+    });
     const unstable = terms.filter(t => t.status !== '已稳定').length;
-    const tc = el.createDiv({ cls: 'asc-card' });
-    tc.createEl('div', { text: `术语清单：待抽查 ${unstable} / 共 ${terms.length}`, cls: 'asc-card-title' });
-    const tbtns = tc.createDiv({ cls: 'asc-row' });
-    tbtns.createEl('button', { text: '发起术语抽查（模式 E）', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.startDrill());
-    tbtns.createEl('button', { text: '重新分析一次', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
-      await this.plugin.runAnalysisCycle();
-      new Notice('分析完成');
-      this.render();
-    });
-    tbtns.createEl('button', { text: '导出本周周报', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.plugin.exportWeeklyReport());
+    ov.createEl('div', { text: `📚 术语 待抽查 ${unstable} · 已稳定 ${terms.filter(t => t.status === '已稳定').length} · 共 ${terms.length}`, cls: 'asc-row' });
+    ov.createEl('div', { text: `🎓 ${profile.stage} · 目标全 A* · 牛剑方向 ${profile.oxbridge.direction}`, cls: 'asc-row asc-muted' });
 
-    // 雅思写作（日常训练在教练「雅思写作训练」会话；这里提供趋势与快捷入口）
-    const scores = await this.plugin.ielts.loadScores();
-    const ic = el.createDiv({ cls: 'asc-card' });
-    ic.createEl('div', { text: `雅思写作（目标 ${profile.ielts.target} · 主攻 ${profile.ielts.focus}）`, cls: 'asc-card-title' });
-    if (scores.length) {
-      for (const s of scores.slice(-3).reverse()) {
-        const dims = `TR ${s.tr ?? '-'} / CC ${s.cc ?? '-'} / LR ${s.lr ?? '-'} / GRA ${s.gra ?? '-'}`;
-        ic.createEl('div', { text: `${s.date} · 总分 ${s.overall ?? '-'}（${dims}）· ${s.title}`, cls: 'asc-row' });
-      }
-      const latest = scores[scores.length - 1];
-      if (latest.overall !== null) {
-        const gap = profile.ielts.target - latest.overall;
-        ic.createEl('div', {
-          text: gap > 0 ? `距目标还差 ${gap.toFixed(1)}` : '已达目标 🎉',
-          cls: 'asc-row asc-strong',
-        });
-      }
-      const weak = this.plugin.ielts.weakestDimension(latest);
-      if (weak) ic.createEl('div', { text: `短板维度：${weak}——下一篇可以重点练这里`, cls: 'asc-row asc-muted' });
-    } else {
-      ic.createEl('div', { text: '还没有批改记录：去教练选「雅思写作训练」，或用命令「雅思：批改当前作文」。', cls: 'asc-hint' });
-    }
-    const exprs = await this.plugin.expressions.load();
-    const dueExprs = await this.plugin.expressions.due();
-    ic.createEl('div', {
-      text: `表达积累库：共 ${exprs.length} · 已掌握 ${exprs.filter(r => r.status === '已掌握').length} · 到期抽查 ${dueExprs.length}`,
-      cls: 'asc-row asc-muted',
-    });
-    const ibtns = ic.createDiv({ cls: 'asc-row' });
-    ibtns.createEl('button', { text: '批改当前作文', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.plugin.gradeActiveEssay());
-    ibtns.createEl('button', { text: `表达造句抽查（${dueExprs.length}）`, cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.plugin.startExpressionDrill());
-    ibtns.createEl('button', { text: '打开批改记录', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => this.openFile(GRADE_LEDGER_PATH));
-    ibtns.createEl('button', { text: '打开积累库', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => this.openFile(EXPR_LIB_PATH));
-
-    // 进阶角（牛剑延伸，兴趣驱动，默认低调）
+    // 4. 动作（一排小按钮，主操作突出）
+    const actionsRow = el.createDiv({ cls: 'asc-row asc-home-actions' });
+    actionsRow.createEl('button', { text: '📖 开始求助', cls: 'asc-btn asc-btn-cta' }).addEventListener('click', () => { this.tab = 'coach'; this.render(); });
+    actionsRow.createEl('button', { text: '✍️ 批改作文', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.plugin.gradeActiveEssay());
+    actionsRow.createEl('button', { text: `🗣 表达抽查${dueExprs.length ? `（${dueExprs.length}）` : ''}`, cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.plugin.startExpressionDrill());
+    actionsRow.createEl('button', { text: '📚 术语抽查', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.startDrill());
+    actionsRow.createEl('button', { text: '📊 周报', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.plugin.exportWeeklyReport());
     if (profile.oxbridge.enabled) {
-      const due = await this.plugin.errorLog.dueEntries();
-      const oc = el.createDiv({ cls: 'asc-card asc-oxbridge-card' });
-      oc.createEl('div', { text: '进阶角（牛剑延伸）', cls: 'asc-card-title' });
-      oc.createEl('div', { text: oxbridgeGuidance(profile.stage, profile.oxbridge.direction), cls: 'asc-row' });
-      oc.createEl('div', {
-        text: due.length === 0
-          ? '复查队列已清空，可解锁一道思维题 ▸'
-          : `建议先清空复查队列（剩 ${due.length} 条）；当然你也可以直接挑战。`,
-        cls: 'asc-row asc-muted',
-      });
-      oc.createDiv({ cls: 'asc-row' })
-        .createEl('button', { text: '开始一道思维题（自动计时）', cls: 'asc-btn asc-btn-cta asc-btn-small' })
-        .addEventListener('click', () => void this.startOxbridgeSession());
+      const ox = actionsRow.createEl('button', { text: '🧠 思维题', cls: 'asc-btn asc-btn-small' });
+      ox.setAttr('title', oxbridgeGuidance(profile.stage, profile.oxbridge.direction));
+      ox.addEventListener('click', () => void this.startOxbridgeSession());
     }
-
-    // 4. 档案摘要与入口（profile 已在函数开头加载）
-    const pc = el.createDiv({ cls: 'asc-card' });
-    pc.createEl('div', { text: `阶段 ${profile.stage} ｜ 雅思目标 ${profile.ielts.target}（${profile.ielts.focus}）`, cls: 'asc-card-title' });
-    for (const [key, sp] of Object.entries(profile.subjects)) {
-      if (!sp) continue;
-      pc.createEl('div', { text: `${key}：${sp.level} · ${sp.bias} · 目标 ${sp.target}`, cls: 'asc-row' });
-    }
-    const hint = el.createDiv({ cls: 'asc-hint' });
-    hint.setText('主学习在线下，需要协助时才去「教练」页签：概念不懂、题目卡住、作文批改。每次求助都会被记录，插件据此发现弱点。');
-    const btnRow = el.createDiv({ cls: 'asc-row' });
-    btnRow.createEl('button', { text: '📖 开始一次求助', cls: 'asc-btn asc-btn-cta' }).addEventListener('click', () => { this.tab = 'coach'; this.render(); });
-    btnRow.createEl('button', { text: `📌 处理待复查（${radar.dueCount}）`, cls: 'asc-btn' }).addEventListener('click', () => { this.tab = 'review'; this.render(); });
   }
 
   /** 术语抽查：未稳定+观察中抽 3 条 + 已稳定随机回抽 1 条（防假性掌握） */

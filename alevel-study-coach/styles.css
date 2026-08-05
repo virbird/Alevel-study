@@ -464,6 +464,19 @@
   line-height: 1;
 }
 
+/* 首页紧凑化：待复查卡片、动作行、卡片间距 */
+.asc-due-card {
+  border-left: 3px solid var(--text-warning);
+}
+
+.asc-home-actions {
+  margin-top: 4px;
+}
+
+.asc-card {
+  margin-bottom: 8px;
+}
+
 /* 记录中心分区标题与可点击链接 */
 .asc-section-title {
   font-weight: 600;
