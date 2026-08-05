@@ -64,6 +64,29 @@ export class StudyCoachSettingTab extends PluginSettingTab {
         }),
       );
 
+    new Setting(containerEl)
+      .setName('候选模型列表')
+      .setDesc('英文逗号分隔；教练页签顶部可快捷切换（如 gpt-4o-mini, deepseek-chat, claude-sonnet-4-20250514）')
+      .addText(t =>
+        t.setValue(this.plugin.settings.modelCandidates).onChange(async v => {
+          this.plugin.settings.modelCandidates = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName('上下文窗口大小')
+      .setDesc('token 数，用于教练会话的上下文展示与自动压缩阈值（超过 80% 自动压缩）')
+      .addText(t =>
+        t.setValue(String(this.plugin.settings.contextWindow)).onChange(async v => {
+          const n = Number(v);
+          if (n > 0) {
+            this.plugin.settings.contextWindow = n;
+            await this.plugin.saveSettings();
+          }
+        }),
+      );
+
     new Setting(containerEl).setName('测试连接').addButton(b =>
       b.setButtonText('测试').onClick(async () => {
         b.setButtonText('测试中…').setDisabled(true);

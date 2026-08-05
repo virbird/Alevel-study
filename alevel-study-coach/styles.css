@@ -389,6 +389,36 @@
   100% { margin-left: 100%; }
 }
 
+/* 教练工具栏紧凑化 */
+.asc-coach-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.asc-model-select {
+  max-width: 200px;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+.asc-ctx {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.asc-ctx-warn {
+  color: var(--text-warning);
+  font-weight: 600;
+}
+
+.asc-btn-icon {
+  padding: 4px 7px;
+  font-size: 13px;
+  line-height: 1;
+}
+
 /* 选择器弹窗列表 */
 .asc-picker-list {
   max-height: 320px;

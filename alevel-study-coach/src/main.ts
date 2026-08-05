@@ -27,6 +27,10 @@ export interface CoachPluginSettings {
   /** 统计分析节流：每周提问热点 / 每两周复发热点 */
   lastWeeklyStats: string;
   lastBiweeklyStats: string;
+  /** 候选模型列表（英文逗号分隔），教练页签可快捷切换 */
+  modelCandidates: string;
+  /** 上下文窗口大小（token，用于展示与自动压缩阈值） */
+  contextWindow: number;
 }
 
 /** 批改任务状态：后台运行，雅思页签内展示进度与结果，不阻塞其他操作 */
@@ -44,6 +48,8 @@ const DEFAULT_SETTINGS: CoachPluginSettings = {
   lastNoticeDate: '',
   lastWeeklyStats: '',
   lastBiweeklyStats: '',
+  modelCandidates: '',
+  contextWindow: 128000,
 };
 
 export default class ALevelStudyCoachPlugin extends Plugin {
@@ -269,6 +275,14 @@ export default class ALevelStudyCoachPlugin extends Plugin {
       this.gradingAbort = null;
       this.refreshCoachViews(true);
     }
+  }
+
+  /** 候选模型列表（当前模型始终包含） */
+  modelList(): string[] {
+    const list = this.settings.modelCandidates.split(',').map(s => s.trim()).filter(Boolean);
+    const cur = this.settings.llm.model.trim();
+    if (cur && !list.includes(cur)) list.unshift(cur);
+    return list;
   }
 
   /** 取消当前批改任务 */

@@ -14,6 +14,8 @@ import { EXPR_LIB_PATH, GRADE_LEDGER_PATH, parseIeltsResult } from '../services/
 import { oxbridgeGuidance } from '../services/ReportService';
 import type { TermEntry } from '../services/TermService';
 import type { ImagePart } from '../types';
+import { ContextCompressor } from '../services/ContextCompressor';
+import { estimateTokens, formatTokens } from '../utils/tokens';
 
 export const VIEW_TYPE = 'alevel-study-coach-view';
 
@@ -358,16 +360,48 @@ export class MainView extends ItemView {
 
     bar.createEl('button', { text: '新会话', cls: 'asc-btn' }).addEventListener('click', () => void this.startSession());
     bar.createEl('button', { text: '结题', cls: 'asc-btn' }).addEventListener('click', () => void this.send(CLOSE_PROMPT));
-    bar.createEl('button', { text: '存档', cls: 'asc-btn' }).addEventListener('click', () => void this.archiveIfNeeded(true));
-    bar.createEl('button', { text: '历史', cls: 'asc-btn' }).addEventListener('click', () => this.openHistory());
-    bar.createEl('button', { text: '＋文档', cls: 'asc-btn' }).addEventListener('click', () => this.openAttachPicker());
-    bar.createEl('button', { text: '＋图片', cls: 'asc-btn' }).addEventListener('click', () =>
+    const iconBtn = (icon: string, label: string, onClick: () => void) => {
+      const b = bar.createEl('button', { text: icon, cls: 'asc-btn asc-btn-icon' });
+      b.setAttr('aria-label', label);
+      b.setAttr('title', label);
+      b.addEventListener('click', onClick);
+    };
+    iconBtn('💾', '存档对话', () => void this.archiveIfNeeded(true));
+    iconBtn('🕘', '历史会话', () => this.openHistory());
+    iconBtn('📄', '引用文档（全会话上下文）', () => this.openAttachPicker());
+    iconBtn('🖼', '附加图片（随下一条消息）', () =>
       new ImagePickerModal(this.app, this.pendingImages, f => {
         this.pendingImages.push(f.path);
         this.render();
       }).open(),
     );
-    bar.createEl('button', { text: '⏱ 独立思考', cls: 'asc-btn' + (this.systemPrompt ? '' : ' asc-btn-disabled') }).addEventListener('click', () => void this.startTimer());
+    iconBtn('⏱', this.systemPrompt ? '独立思考计时' : '独立思考计时（先开会话）', () => void this.startTimer());
+
+    // 模型切换 + 上下文用量（紧凑一行）
+    const metaRow = el.createDiv({ cls: 'asc-coach-meta' });
+    const modelSel = metaRow.createEl('select', { cls: 'asc-select asc-model-select' });
+    const models = this.plugin.modelList();
+    const curModel = this.plugin.settings.llm.model;
+    if (!models.length) modelSel.createEl('option', { text: curModel || '未配置模型', value: curModel });
+    for (const m of models) modelSel.createEl('option', { text: m, value: m });
+    modelSel.value = curModel;
+    modelSel.addEventListener('change', async () => {
+      this.plugin.settings.llm.model = modelSel.value;
+      await this.plugin.saveSettings();
+      if (this.systemPrompt) await this.rebuildSystemPrompt();
+      new Notice(`模型已切换：${modelSel.value}`);
+      this.render();
+    });
+    const ctx = this.contextTokens();
+    const win = this.plugin.settings.contextWindow;
+    const ctxEl = metaRow.createSpan({
+      text: `上下文 ≈${formatTokens(ctx)}/${formatTokens(win)}${ctx > win * 0.8 ? ' ⚠' : ''}`,
+      cls: 'asc-ctx' + (ctx > win * 0.8 ? ' asc-ctx-warn' : ''),
+    });
+    ctxEl.setAttr('title', '发送前超过 80% 会自动压缩；也可手动压缩');
+    const compressBtn = metaRow.createEl('button', { text: '压缩', cls: 'asc-btn asc-btn-small' });
+    compressBtn.setAttr('title', '把较早对话压缩为摘要，保留最近几轮');
+    compressBtn.addEventListener('click', () => void this.compressContext(true));
 
     if (this.timerDeadline > Date.now()) {
       const cd = el.createDiv({ cls: 'asc-timer' });
@@ -478,6 +512,41 @@ export class MainView extends ItemView {
     this.render();
   }
 
+  /** 当前上下文估算 token：system + 消息历史 */
+  private contextTokens(): number {
+    let t = estimateTokens(this.systemPrompt);
+    for (const m of this.messages) t += estimateTokens(m.content);
+    return t;
+  }
+
+  /** 上下文压缩：manual=false 时仅在超过 80% 窗口时自动执行 */
+  private async compressContext(manual: boolean): Promise<void> {
+    if (this.busy) return;
+    if (!ContextCompressor.shouldCompress(this.messages)) {
+      if (manual) new Notice('对话还短，不需要压缩');
+      return;
+    }
+    const win = this.plugin.settings.contextWindow;
+    if (!manual && this.contextTokens() <= win * 0.8) return;
+    if (!this.plugin.llm.configured) {
+      new Notice('请先在设置里配置 LLM');
+      return;
+    }
+    this.busy = true;
+    this.render();
+    try {
+      const before = this.contextTokens();
+      const r = await ContextCompressor.compress(this.messages, this.plugin.llm);
+      this.messages = r.messages;
+      new Notice(`上下文已压缩：≈${formatTokens(before)} → ≈${formatTokens(this.contextTokens())} token`);
+    } catch (e) {
+      new Notice(`压缩失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+    } finally {
+      this.busy = false;
+      this.render();
+    }
+  }
+
   private async startSession(): Promise<void> {
     if (!this.plugin.llm.configured) {
       new Notice('请先在设置里配置 LLM（接口类型 / Base URL / Key / 模型）');
@@ -523,6 +592,8 @@ export class MainView extends ItemView {
       new Notice(`⏱ 还没到求助时间（剩 ${fmtRemain(this.timerDeadline - Date.now())}）。提示词约定：先独立思考满门槛再求助。`);
       return;
     }
+    // 自动压缩：发送前超过 80% 窗口时先压缩历史
+    await this.compressContext(false);
     // 思考凭证：计时跑满后的第一条消息带上标注，供教练按思维题模式验证
     const content = this.thinkCredit > 0 ? text + thinkAnnotation(this.thinkCredit) : text;
     this.thinkCredit = 0;
