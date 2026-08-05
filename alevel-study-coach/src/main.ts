@@ -31,6 +31,8 @@ export interface CoachPluginSettings {
   modelCandidates: Record<string, string>;
   /** 每个 provider 的默认模型：切换接口时自动应用 */
   modelDefaults: Record<string, string>;
+  /** 教练页签上次选择的科目（默认概念精练） */
+  lastCoachMode: string;
   /** 上下文窗口大小（token，用于展示与自动压缩阈值） */
   contextWindow: number;
 }
@@ -52,6 +54,7 @@ const DEFAULT_SETTINGS: CoachPluginSettings = {
   lastBiweeklyStats: '',
   modelCandidates: { 'openai-compat': '', anthropic: '' },
   modelDefaults: { 'openai-compat': '', anthropic: '' },
+  lastCoachMode: 'drill',
   contextWindow: 128000,
 };
 

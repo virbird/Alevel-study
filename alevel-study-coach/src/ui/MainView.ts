@@ -33,7 +33,7 @@ export class MainView extends ItemView {
   private bodyEl!: HTMLElement;
 
   // coach 会话状态
-  private mode: ModeKey = 'Maths';
+  private mode: ModeKey;
   private systemPrompt = '';
   private sessionSummary = '';
   private messages: ChatMessage[] = [];
@@ -58,6 +58,9 @@ export class MainView extends ItemView {
 
   constructor(leaf: WorkspaceLeaf, private plugin: ALevelStudyCoachPlugin) {
     super(leaf);
+    // 恢复上次选择的科目；首次默认概念精练（术语训练优先）
+    const saved = plugin.settings.lastCoachMode;
+    this.mode = SUBJECTS.some(s => s.key === saved) ? (saved as ModeKey) : 'drill';
   }
 
   getViewType(): string { return VIEW_TYPE; }
@@ -318,6 +321,9 @@ export class MainView extends ItemView {
     select.addEventListener('change', () => {
       this.mode = select.value as ModeKey;
       select.setAttr('title', SUBJECTS.find(s => s.key === this.mode)?.label ?? '');
+      // 记住选择，下次打开保持
+      this.plugin.settings.lastCoachMode = this.mode;
+      void this.plugin.saveSettings();
     });
 
     // 会话生命周期按钮：无会话时是「新会话」，会话进行中变为「结题」
