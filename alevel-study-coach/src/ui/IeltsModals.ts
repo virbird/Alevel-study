@@ -39,10 +39,13 @@ export class GradeConfirmModal extends Modal {
         const textLen = text.replace(/\[图片[^\]]*\]/g, '').trim().length;
         const parts = [`正文约 ${textLen} 字`, `图片 ${images.length} 张`];
         if (skipped.length) parts.push(`跳过 ${skipped.length} 张（${skipped.join('、')}）`);
-        info.setText(parts.join(' · '));
-        if (textLen < 40) {
-          info.setText(parts.join(' · ') + ' —— 文字太少，请先写入题目与作文');
+        if (textLen < 40 && images.length === 0) {
+          info.setText(parts.join(' · ') + ' —— 未找到作文内容：请写入题目与作文（文字或图片引用均可）');
           goBtn.disabled = true;
+        } else if (textLen < 40 && images.length > 0) {
+          info.setText(parts.join(' · ') + ' —— 内容主要在图片中，将由视觉模型直接识别批改');
+        } else {
+          info.setText(parts.join(' · '));
         }
       } catch (e) {
         info.setText(`预览失败：${e instanceof Error ? e.message : String(e)}`);

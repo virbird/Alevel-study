@@ -134,9 +134,13 @@ export async function run(): Promise<void> {
   const merged = await svcNote.loadScores();
   eq('趋势合并台账与旧笔记', merged.length, 3);
   check('台账条目指向原笔记', merged.some(s => s.file === 'w/essay1.md' && s.overall === 6.5));
-  // 文字太少拦截
+  // 拦截条件：文字极少且无图片；有图片则放行（题目和作文可能全在图片里）
   vNote.files['w/short.md'] = '太短了。';
   let shortThrew = false;
   try { await svcNote.gradeNote('w/short.md', fakeLlm); } catch { shortThrew = true; }
-  check('文字太少拦截批改', shortThrew);
+  check('无文字且无图片才拦截', shortThrew);
+  vNote.binaries['w/q2.png'] = new Uint8Array([7]);
+  vNote.files['w/img-only.md'] = '如图：\n![[q2.png]]';
+  const imgOnly = await svcNote.gradeNote('w/img-only.md', fakeLlm);
+  check('文字少但有图片放行批改', imgOnly.imageCount === 1 && imgOnly.scores.overall === 6.5);
 }

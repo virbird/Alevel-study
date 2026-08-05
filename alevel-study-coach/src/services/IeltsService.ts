@@ -145,7 +145,9 @@ export class IeltsService {
     if (!content) throw new Error('笔记不存在');
     const { text, images, skipped } = await this.extractNoteImages(path, content);
     const textOnly = text.replace(/\[图片[^\]]*\]/g, '').trim();
-    if (textOnly.length < 40) throw new Error('笔记文字内容太少——请先写入题目与作文');
+    // 题目与作文可能全在图片里：只要有图片就放行，交给视觉模型识别；
+    // 仅当文字极少且无图片时才拦截
+    if (textOnly.length < 40 && images.length === 0) throw new Error('未在笔记中找到作文内容——请写入题目与作文（文字或图片引用均可）');
 
     const template = (await this.vault.read(`${ROOT}/prompts/ielts-writing.md`)) ?? '';
     if (!template) throw new Error('找不到 prompts/ielts-writing.md 模板');
