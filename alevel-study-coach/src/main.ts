@@ -29,6 +29,8 @@ export interface CoachPluginSettings {
   lastBiweeklyStats: string;
   /** 候选模型列表：按 provider 分别配置（英文逗号分隔），教练页签可快捷切换 */
   modelCandidates: Record<string, string>;
+  /** 每个 provider 的默认模型：切换接口时自动应用 */
+  modelDefaults: Record<string, string>;
   /** 上下文窗口大小（token，用于展示与自动压缩阈值） */
   contextWindow: number;
 }
@@ -49,6 +51,7 @@ const DEFAULT_SETTINGS: CoachPluginSettings = {
   lastWeeklyStats: '',
   lastBiweeklyStats: '',
   modelCandidates: { 'openai-compat': '', anthropic: '' },
+  modelDefaults: { 'openai-compat': '', anthropic: '' },
   contextWindow: 128000,
 };
 
@@ -150,6 +153,12 @@ export default class ALevelStudyCoachPlugin extends Plugin {
       this.settings.modelCandidates = { 'openai-compat': mc, anthropic: mc };
     } else {
       this.settings.modelCandidates = Object.assign({}, DEFAULT_SETTINGS.modelCandidates, (mc as Record<string, string>) ?? {});
+    }
+    this.settings.modelDefaults = Object.assign({}, DEFAULT_SETTINGS.modelDefaults, (raw.modelDefaults as Record<string, string>) ?? {});
+    // 迁移：未设过默认模型的当前接口，用当前模型作为默认
+    const cur = this.settings.llm.provider;
+    if (!this.settings.modelDefaults[cur] && this.settings.llm.model) {
+      this.settings.modelDefaults[cur] = this.settings.llm.model;
     }
   }
 
@@ -285,12 +294,15 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     }
   }
 
-  /** 当前 provider 的候选模型列表（当前模型始终包含） */
+  /** 当前 provider 的候选模型列表（默认模型置顶，当前模型始终包含） */
   modelList(): string[] {
     const raw = this.settings.modelCandidates[this.settings.llm.provider] ?? '';
     const list = raw.split(',').map(s => s.trim()).filter(Boolean);
+    const def = (this.settings.modelDefaults[this.settings.llm.provider] ?? '').trim();
     const cur = this.settings.llm.model.trim();
+    if (def && !list.includes(def)) list.unshift(def);
     if (cur && !list.includes(cur)) list.unshift(cur);
+    if (def && list.includes(def)) return [def, ...list.filter(m => m !== def)];
     return list;
   }
 
@@ -302,6 +314,19 @@ export default class ALevelStudyCoachPlugin extends Plugin {
 
   currentModelCandidates(): string {
     return this.settings.modelCandidates[this.settings.llm.provider] ?? '';
+  }
+
+  /** 当前 provider 的默认模型 */
+  currentModelDefault(): string {
+    return this.settings.modelDefaults[this.settings.llm.provider] ?? '';
+  }
+
+  /** 设置当前 provider 的默认模型，并立即应用为当前模型 */
+  async setModelDefault(value: string): Promise<void> {
+    const v = value.trim();
+    this.settings.modelDefaults[this.settings.llm.provider] = v;
+    if (v) this.settings.llm.model = v;
+    await this.saveSettings();
   }
 
   /** 取消当前批改任务 */

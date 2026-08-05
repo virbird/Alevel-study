@@ -382,8 +382,11 @@ export class MainView extends ItemView {
     const modelSel = metaRow.createEl('select', { cls: 'asc-select asc-model-select' });
     const models = this.plugin.modelList();
     const curModel = this.plugin.settings.llm.model;
+    const defModel = this.plugin.currentModelDefault();
     if (!models.length) modelSel.createEl('option', { text: curModel || '未配置模型', value: curModel });
-    for (const m of models) modelSel.createEl('option', { text: m, value: m });
+    for (const m of models) {
+      modelSel.createEl('option', { text: m === defModel ? `${m} ★默认` : m, value: m });
+    }
     modelSel.value = curModel;
     modelSel.addEventListener('change', async () => {
       this.plugin.settings.llm.model = modelSel.value;

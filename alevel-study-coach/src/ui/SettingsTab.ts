@@ -27,6 +27,9 @@ export class StudyCoachSettingTab extends PluginSettingTab {
             llm.provider = v as 'openai-compat' | 'anthropic';
             if (llm.provider === 'anthropic' && llm.baseUrl.includes('openai.com')) llm.baseUrl = 'https://api.anthropic.com';
             if (llm.provider === 'openai-compat' && llm.baseUrl.includes('anthropic.com')) llm.baseUrl = 'https://api.openai.com/v1';
+            // 切接口自动应用该接口的默认模型
+            const def = this.plugin.settings.modelDefaults[llm.provider] ?? '';
+            if (def) llm.model = def;
             await this.plugin.saveSettings();
             this.display();
           }),
@@ -56,11 +59,20 @@ export class StudyCoachSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('模型')
-      .setDesc('如 gpt-4o-mini / claude-sonnet-4-20250514 / deepseek-chat')
+      .setDesc('当前使用的模型，如 gpt-4o-mini / claude-sonnet-4-20250514 / deepseek-chat')
       .addText(t =>
         t.setValue(llm.model).onChange(async v => {
           llm.model = v.trim();
           await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName(`默认模型（当前接口：${llm.provider === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'}）`)
+      .setDesc('切换到该接口时自动应用的模型；建议填候选列表中的一个')
+      .addText(t =>
+        t.setValue(this.plugin.currentModelDefault()).onChange(async v => {
+          await this.plugin.setModelDefault(v);
         }),
       );
 
