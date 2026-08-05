@@ -12,6 +12,7 @@ import { SessionHistoryModal, AttachPickerModal } from './PickerModals';
 import { SuggestionModal, DrillModal } from './InsightModals';
 import { NewEssayModal } from './IeltsModals';
 import { EXPR_LIB_PATH } from '../services/IeltsService';
+import { oxbridgeGuidance } from '../services/ReportService';
 import type { TermEntry } from '../services/TermService';
 
 export const VIEW_TYPE = 'alevel-study-coach-view';
@@ -179,6 +180,7 @@ export class MainView extends ItemView {
   // ─── 首页 ────────────────────────────────────────────────
   private async renderDashboard(): Promise<void> {
     const el = this.bodyEl;
+    const profile = await this.plugin.profiles.load();
     const entries = await this.plugin.errorLog.load();
     const pending = (await this.plugin.suggestions.loadAll()).filter(s => s.status === '待处理');
 
@@ -223,6 +225,22 @@ export class MainView extends ItemView {
     if (radar.confusionDist.length) {
       rc.createEl('div', { text: '困惑类型：' + radar.confusionDist.map(c => `${c.confusion} ×${c.count}`).join(' · '), cls: 'asc-row' });
     }
+    // 表达码双周环比（DV/CL/LK 是当前最高优先级弱点，下降才是目标）
+    const curCodes = this.plugin.engine.codeCountsRange(entries, -1, 14);
+    const prevCodes = this.plugin.engine.codeCountsRange(entries, 14, 28);
+    const cnt = (list: { code: string; count: number }[], c: string) => list.find(x => x.code === c)?.count ?? 0;
+    const exprTrend = ['DV', 'CL', 'LK'].map(c => {
+      const a = cnt(curCodes, c);
+      const b = cnt(prevCodes, c);
+      const arrow = a < b ? '↓' : a === b ? '→' : '↑';
+      return `${c} ${b}→${a} ${arrow}`;
+    }).join('  ');
+    rc.createEl('div', { text: `表达码环比（近两周 vs 前两周）：${exprTrend}`, cls: 'asc-row' });
+    const relapse = entries.filter(e => e.recurrence >= 2 && e.status !== '已消除')
+      .sort((a, b) => b.recurrence - a.recurrence).slice(0, 3);
+    if (relapse.length) {
+      rc.createEl('div', { text: '复发热点：' + relapse.map(e => `${e.topic} ×${e.recurrence}（${e.code}）`).join(' · '), cls: 'asc-row' });
+    }
     if (!radar.topicHeat.length && !radar.codeCounts.length) {
       rc.createEl('div', { text: '近两周数据还太少——每次结题都会自动积累提问记录与失分记录。', cls: 'asc-hint' });
     }
@@ -239,9 +257,26 @@ export class MainView extends ItemView {
       new Notice('分析完成');
       this.render();
     });
+    tbtns.createEl('button', { text: '导出本周周报', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.plugin.exportWeeklyReport());
 
-    // 4. 档案摘要与入口
-    const profile = await this.plugin.profiles.load();
+    // 进阶角（牛剑延伸，兴趣驱动，默认低调）
+    if (profile.oxbridge.enabled) {
+      const due = await this.plugin.errorLog.dueEntries();
+      const oc = el.createDiv({ cls: 'asc-card asc-oxbridge-card' });
+      oc.createEl('div', { text: '进阶角（牛剑延伸）', cls: 'asc-card-title' });
+      oc.createEl('div', { text: oxbridgeGuidance(profile.stage, profile.oxbridge.direction), cls: 'asc-row' });
+      oc.createEl('div', {
+        text: due.length === 0
+          ? '复查队列已清空，可解锁一道思维题 ▸'
+          : `建议先清空复查队列（剩 ${due.length} 条）；当然你也可以直接挑战。`,
+        cls: 'asc-row asc-muted',
+      });
+      oc.createDiv({ cls: 'asc-row' })
+        .createEl('button', { text: '开始一道思维题（自动计时）', cls: 'asc-btn asc-btn-cta asc-btn-small' })
+        .addEventListener('click', () => void this.startOxbridgeSession());
+    }
+
+    // 4. 档案摘要与入口（profile 已在函数开头加载）
     const pc = el.createDiv({ cls: 'asc-card' });
     pc.createEl('div', { text: `阶段 ${profile.stage} ｜ 雅思目标 ${profile.ielts.target}（${profile.ielts.focus}）`, cls: 'asc-card-title' });
     for (const [key, sp] of Object.entries(profile.subjects)) {
@@ -357,6 +392,15 @@ export class MainView extends ItemView {
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); doSend(); }
     });
+  }
+
+  /** 进阶角思维题：数学会话 + 自动启动独立思考计时（提示词的思维题分支） */
+  private async startOxbridgeSession(): Promise<void> {
+    this.tab = 'coach';
+    this.mode = 'Maths';
+    await this.startSession();
+    await this.startTimer();
+    new Notice('进阶角：把思维题/估算题原文发过来——先独立想满门槛，卡住本身就是训练');
   }
 
   /** 独立思考计时器：会话内能力，按档案门槛倒计时；跑满后给下一条消息带思考凭证 */

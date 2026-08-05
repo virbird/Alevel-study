@@ -1,4 +1,4 @@
-import { Notice, Plugin, WorkspaceLeaf } from 'obsidian';
+import { Notice, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
 import type { LlmSettings } from './types';
 import { LlmClient } from './llm/LlmClient';
 import { VaultService } from './services/VaultService';
@@ -12,12 +12,13 @@ import { StatsService } from './services/StatsService';
 import { TermListService } from './services/TermService';
 import { IeltsService } from './services/IeltsService';
 import { ExpressionService } from './services/ExpressionService';
+import { ReportService } from './services/ReportService';
 import { MainView, VIEW_TYPE } from './ui/MainView';
 import { StudyCoachSettingTab } from './ui/SettingsTab';
 import { OnboardModal } from './ui/OnboardModal';
 import { CaptureModal } from './ui/CaptureModal';
 import { NewEssayModal, ExpressionDrillModal } from './ui/IeltsModals';
-import { todayStr, daysBetween } from './utils/date';
+import { todayStr, daysBetween, isoWeekKey } from './utils/date';
 
 export interface CoachPluginSettings {
   llm: LlmSettings;
@@ -50,6 +51,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   stats!: StatsService;
   ielts!: IeltsService;
   expressions!: ExpressionService;
+  reports!: ReportService;
   assembler!: PromptAssembler;
   private statusBarEl!: HTMLElement;
 
@@ -69,6 +71,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     this.engine = new InsightEngine(this.vaultService);
     this.suggestions = new SuggestionService(this.vaultService);
     this.stats = new StatsService(this.vaultService, this.engine);
+    this.reports = new ReportService(this.vaultService, this.errorLog, this.engine, this.terms, this.ielts, this.suggestions);
     this.assembler = new PromptAssembler(
       this.vaultService, this.profiles, this.errorLog, this.progress,
       this.weakImpressions, this.practiceFocus, this.stats,
@@ -84,6 +87,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     this.addCommand({ id: 'ielts-new-essay', name: '雅思：新建作文笔记', callback: () => new NewEssayModal(this.app, this).open() });
     this.addCommand({ id: 'ielts-grade', name: '雅思：批改当前作文', callback: () => void this.gradeActiveEssay() });
     this.addCommand({ id: 'ielts-expr-drill', name: '雅思：表达造句抽查', callback: () => void this.startExpressionDrill() });
+    this.addCommand({ id: 'export-weekly', name: '导出本周周报', callback: () => void this.exportWeeklyReport() });
 
     this.addSettingTab(new StudyCoachSettingTab(this.app, this));
 
@@ -221,17 +225,20 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     }
     new ExpressionDrillModal(this.app, this, due).open();
   }
+
+  /** 导出本周周报：六块统计落盘 周报/ 并打开 */
+  async exportWeeklyReport(): Promise<void> {
+    try {
+      const path = await this.reports.exportWeekly();
+      const file = this.app.vault.getAbstractFileByPath(path);
+      if (file instanceof TFile) await this.app.workspace.getLeaf(true).openFile(file);
+      new Notice(`周报已生成：${path}`);
+    } catch (e) {
+      new Notice(`周报生成失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+    }
+  }
 }
 
 export function getLeafForView(plugin: Plugin): WorkspaceLeaf | null {
   return plugin.app.workspace.getLeavesOfType(VIEW_TYPE)[0] ?? null;
-}
-
-/** ISO 周标识，用于每周统计节流 */
-function isoWeekKey(): string {
-  const t = new Date();
-  t.setDate(t.getDate() + 3 - ((t.getDay() + 6) % 7));
-  const week1 = new Date(t.getFullYear(), 0, 4);
-  const weekNum = 1 + Math.round(((t.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
-  return `${t.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
 }

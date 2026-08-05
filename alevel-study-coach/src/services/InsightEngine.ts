@@ -78,8 +78,20 @@ export class InsightEngine {
 
   /** 窗口内失分码统计（含所有状态的新增与复发记录，按日期统计） */
   async codeCounts(entries: ErrorLogEntry[], windowDays = 14): Promise<{ code: string; count: number }[]> {
+    return this.codeCountsRange(entries, -1, windowDays);
+  }
+
+  /**
+   * 任意窗口的失分码统计：天数距今天落在 (fromDaysAgo, toDaysAgo] 内。
+   * 环比用：本期 codeCountsRange(entries, -1, 14)，上期 codeCountsRange(entries, 14, 28)。
+   */
+  codeCountsRange(entries: ErrorLogEntry[], fromDaysAgo: number, toDaysAgo: number): { code: string; count: number }[] {
     const map = new Map<string, number>();
-    for (const e of entries.filter(e => this.withinDays(e.date, windowDays))) {
+    for (const e of entries) {
+      const d = parseDate(e.date);
+      if (!d) continue;
+      const n = daysBetween(e.date, todayStr());
+      if (n <= fromDaysAgo || n > toDaysAgo) continue;
       const code = (e.code || '').toUpperCase();
       if (!code) continue;
       map.set(code, (map.get(code) ?? 0) + 1);

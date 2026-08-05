@@ -3,3 +3,5 @@ main.js
 test/run.js
 *.map
 .DS_Store
+test/run.js
+test/smoke.js

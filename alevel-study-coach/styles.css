@@ -318,6 +318,10 @@
   border-left: 3px solid var(--text-warning);
 }
 
+.asc-oxbridge-card {
+  border-left: 3px solid var(--interactive-accent);
+}
+
 .asc-timer {
   font-size: 12px;
   color: var(--text-warning);

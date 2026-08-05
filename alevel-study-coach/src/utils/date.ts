@@ -40,3 +40,12 @@ export function daysBetween(a: string, b: string): number {
   if (!da || !db) return 0;
   return Math.round((db.getTime() - da.getTime()) / 86400000);
 }
+
+/** ISO 周标识（如 2026-W32），用于周报与统计节流 */
+export function isoWeekKey(dateStr?: string): string {
+  const t = dateStr && parseDate(dateStr) ? new Date(parseDate(dateStr)!.getTime()) : new Date();
+  t.setDate(t.getDate() + 3 - ((t.getDay() + 6) % 7));
+  const week1 = new Date(t.getFullYear(), 0, 4);
+  const weekNum = 1 + Math.round(((t.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+  return `${t.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+}

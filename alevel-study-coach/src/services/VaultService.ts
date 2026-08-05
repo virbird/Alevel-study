@@ -196,6 +196,7 @@ export class VaultService {
       await this.ensureFolder(`${ROOT}/雅思`);
       await this.ensureFolder(`${ROOT}/雅思/作文`);
       await this.ensureFolder(`${ROOT}/建议`);
+      await this.ensureFolder(`${ROOT}/周报`);
       await this.ensureFolder(`${ROOT}/会话`);
       await this.ensureFolder(`${ROOT}/prompts`);
 
