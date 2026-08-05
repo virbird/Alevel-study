@@ -18,6 +18,8 @@ export interface ChatOptions {
   messages: ChatMessage[];
   maxTokens?: number;
   temperature?: number;
+  /** 支持取消/超时（AbortController） */
+  signal?: AbortSignal;
 }
 
 /** OpenAI 兼容格式的多模态 user content（导出供测试） */
@@ -75,6 +77,7 @@ export class LlmClient {
         temperature: opts.temperature ?? 0.7,
       }),
       throw: false,
+      signal: opts.signal,
     });
 
     if (res.status >= 400) {
@@ -105,6 +108,7 @@ export class LlmClient {
         messages: opts.messages.map(m => ({ role: m.role, content: toAnthropicUserContent(m.content, m.images) })),
       }),
       throw: false,
+      signal: opts.signal,
     });
 
     if (res.status >= 400) {

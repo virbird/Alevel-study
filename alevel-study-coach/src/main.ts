@@ -202,18 +202,53 @@ export default class ALevelStudyCoachPlugin extends Plugin {
       new Notice('请先在设置里配置 LLM');
       return;
     }
-    new Notice('批改中……六段结构化输出约需几十秒');
+    const basename = path.split('/').pop()?.replace(/\.md$/, '') ?? path;
+
+    // 持续状态提示：进行中显示已等待秒数，可随时取消；结束明确报成功/超时/失败
+    const controller = new AbortController();
+    let cancelled = false;
+    const started = Date.now();
+    const status = new StatusNotice(`正在批改：${basename}…\n等待模型响应 0 秒（含图片时通常需 1–4 分钟）`, () => {
+      cancelled = true;
+      controller.abort();
+    });
+    const ticker = window.setInterval(() => {
+      status.update(`正在批改：${basename}…\n等待模型响应 ${Math.round((Date.now() - started) / 1000)} 秒（含图片时通常需 1–4 分钟）`);
+    }, 1000);
+    const timeoutId = window.setTimeout(() => controller.abort(), GRADE_TIMEOUT_MS);
+
     try {
-      const result = await this.ielts.gradeNote(path, this.llm);
-      const basename = path.split('/').pop()?.replace(/\.md$/, '') ?? path;
+      const result = await this.ielts.gradeNote(path, this.llm, controller.signal);
       const added = await this.expressions.appendAll(result.expressions, basename);
       const s = result.scores;
+      const secs = Math.round((Date.now() - started) / 1000);
       new Notice(
-        `批改完成：${basename}${s.overall !== null ? `，预估总分 ${s.overall}` : ''}${result.imageCount ? `（含 ${result.imageCount} 张图片）` : ''}${added ? `，${added} 条高分表达进积累库` : ''}`,
-        10000,
+        `✅ 批改成功：${basename}（用时 ${secs} 秒）${s.overall !== null ? `，预估总分 ${s.overall}` : ''}${result.imageCount ? `，含 ${result.imageCount} 张图片` : ''}${added ? `，${added} 条高分表达进积累库` : ''}。结果已写入笔记「## AI 批改」小节。`,
+        15000,
       );
     } catch (e) {
-      new Notice(`批改失败：${e instanceof Error ? e.message : String(e)}`, 10000);
+      const secs = Math.round((Date.now() - started) / 1000);
+      if (cancelled) {
+        new Notice(`已取消批改：${basename}（未产生任何写入）`);
+      } else if (controller.signal.aborted) {
+        new Notice(`⏱ 批改超时：${basename}（等待超过 ${GRADE_TIMEOUT_MS / 1000} 秒）。请检查网络/模型后重试，或换更快的模型。`, 15000);
+      } else {
+        new Notice(`❌ 批改失败：${basename} —— ${e instanceof Error ? e.message : String(e)}`, 15000);
+      }
+    } finally {
+      window.clearInterval(ticker);
+      window.clearTimeout(timeoutId);
+      status.close();
+      this.refreshCoachViews();
+    }
+  }
+
+  /** 长任务结束后刷新插件视图（若打开） */
+  private refreshCoachViews(): void {
+    const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
+    const view = leaf?.view;
+    if (view && typeof (view as { refresh?: () => void }).refresh === 'function') {
+      (view as { refresh: () => void }).refresh();
     }
   }
 
@@ -246,4 +281,35 @@ export default class ALevelStudyCoachPlugin extends Plugin {
 
 export function getLeafForView(plugin: Plugin): WorkspaceLeaf | null {
   return plugin.app.workspace.getLeavesOfType(VIEW_TYPE)[0] ?? null;
+}
+
+/** 批改超时：含图片的六段输出较慢，给足余量 */
+const GRADE_TIMEOUT_MS = 300_000;
+
+/** 持续状态通知：不自动消失，可更新文案，可附取消按钮 */
+class StatusNotice {
+  private notice: Notice;
+  private textEl: HTMLElement;
+
+  constructor(text: string, onCancel?: () => void) {
+    this.notice = new Notice('', 0);
+    const el = this.notice.noticeEl;
+    el.empty();
+    el.addClass('asc-status-notice');
+    this.textEl = el.createDiv();
+    this.textEl.setText(text);
+    if (onCancel) {
+      const btn = el.createEl('button', { text: '取消', cls: 'asc-btn asc-btn-small' });
+      btn.style.marginTop = '6px';
+      btn.addEventListener('click', onCancel);
+    }
+  }
+
+  update(text: string): void {
+    this.textEl.setText(text);
+  }
+
+  close(): void {
+    this.notice.hide();
+  }
 }

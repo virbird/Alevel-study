@@ -76,6 +76,11 @@ export class MainView extends ItemView {
     this.containerEl.empty();
   }
 
+  /** 长任务（批改等）完成后由插件调用刷新 */
+  refresh(): void {
+    this.render();
+  }
+
   private render(): void {
     const root = this.containerEl.children[1] as HTMLElement;
     root.empty();

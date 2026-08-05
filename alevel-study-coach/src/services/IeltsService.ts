@@ -139,8 +139,9 @@ export class IeltsService {
   /**
    * 批改任意笔记（题目+作文可在同一篇，可含图片）：
    * 图片随请求发给视觉模型 → 六段输出回填笔记 ## AI 批改 小节 → 分数进台账。
+   * signal 支持取消/超时（透传给 LLM 请求）。
    */
-  async gradeNote(path: string, llm: LlmClient): Promise<GradeResult & { imageCount: number; skipped: string[] }> {
+  async gradeNote(path: string, llm: LlmClient, signal?: AbortSignal): Promise<GradeResult & { imageCount: number; skipped: string[] }> {
     const content = await this.vault.read(path);
     if (!content) throw new Error('笔记不存在');
     const { text, images, skipped } = await this.extractNoteImages(path, content);
@@ -161,6 +162,7 @@ export class IeltsService {
       }],
       maxTokens: 8000,
       temperature: 0.3,
+      signal,
     });
 
     const parsed = parseIeltsResult(reply);

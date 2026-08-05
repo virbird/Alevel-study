@@ -119,8 +119,10 @@ export async function run(): Promise<void> {
   const svcNote = new IeltsService(vNote.asService());
   let captured: ChatOptions | null = null;
   const fakeLlm = { chat: async (opts: ChatOptions) => { captured = opts; return REPLY_OK; }, configured: true } as unknown as LlmClient;
-  const gres = await svcNote.gradeNote('w/essay1.md', fakeLlm);
+  const aborter = new AbortController();
+  const gres = await svcNote.gradeNote('w/essay1.md', fakeLlm, aborter.signal);
   eq('分数解析', gres.scores.overall, 6.5);
+  check('取消信号透传给 LLM 请求', captured!.signal === aborter.signal);
   eq('图片随请求发送', captured!.messages[0].images?.length, 1);
   check('提问含图片位置提示', captured!.messages[0].content.includes('[图片: q1.png]') && captured!.messages[0].content.includes('图片'));
   const gradedNote = vNote.files['w/essay1.md'];

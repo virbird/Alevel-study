@@ -358,6 +358,12 @@
   word-break: break-all;
 }
 
+.asc-status-notice {
+  white-space: pre-line;
+  text-align: left;
+  max-width: 340px;
+}
+
 /* 选择器弹窗列表 */
 .asc-picker-list {
   max-height: 320px;
