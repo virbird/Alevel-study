@@ -320,24 +320,32 @@ export class MainView extends ItemView {
       select.setAttr('title', SUBJECTS.find(s => s.key === this.mode)?.label ?? '');
     });
 
-    bar.createEl('button', { text: '新会话', cls: 'asc-btn' }).addEventListener('click', () => void this.startSession());
-    bar.createEl('button', { text: '结题', cls: 'asc-btn' }).addEventListener('click', () => void this.send(CLOSE_PROMPT));
-    const iconBtn = (icon: string, label: string, onClick: () => void) => {
-      const b = bar.createEl('button', { text: icon, cls: 'asc-btn asc-btn-icon' });
-      b.setAttr('aria-label', label);
-      b.setAttr('title', label);
+    // 会话生命周期按钮：无会话时是「新会话」，会话进行中变为「结题」
+    const sessionBtn = bar.createEl('button', {
+      text: this.systemPrompt ? '✓ 结题' : '▶ 新会话',
+      cls: 'asc-btn' + (this.systemPrompt ? '' : ' asc-btn-cta'),
+    });
+    sessionBtn.setAttr('title', this.systemPrompt ? '结束当前题：走结题流程（自评/审查/log 行/会话打标）' : '开始新会话：自动注入提示词、档案与未消除失分记录');
+    sessionBtn.addEventListener('click', () => {
+      if (this.systemPrompt) void this.send(CLOSE_PROMPT);
+      else void this.startSession();
+    });
+    // 文字小按钮代替易混淆的图标（历史≠计时）
+    const textBtn = (label: string, title: string, onClick: () => void) => {
+      const b = bar.createEl('button', { text: label, cls: 'asc-btn asc-btn-small' });
+      b.setAttr('title', title);
       b.addEventListener('click', onClick);
     };
-    iconBtn('💾', '存档对话', () => void this.archiveIfNeeded(true));
-    iconBtn('🕘', '历史会话', () => this.openHistory());
-    iconBtn('📄', '引用文档（全会话上下文）', () => this.openAttachPicker());
-    iconBtn('🖼', '附加图片（随下一条消息）', () =>
+    textBtn('存档', '把当前会话存档到笔记', () => void this.archiveIfNeeded(true));
+    textBtn('历史', '加载历史会话继续聊', () => this.openHistory());
+    textBtn('文档', '引用文档（全会话上下文）', () => this.openAttachPicker());
+    textBtn('图片', '附加图片（随下一条消息）', () =>
       new ImagePickerModal(this.app, this.pendingImages, f => {
         this.pendingImages.push(f.path);
         this.render();
       }).open(),
     );
-    iconBtn('⏱', this.systemPrompt ? '独立思考计时' : '独立思考计时（先开会话）', () => void this.startTimer());
+    textBtn('计时', this.systemPrompt ? '独立思考计时（到时间才允许求助）' : '独立思考计时（先开会话）', () => void this.startTimer());
 
     if (this.timerDeadline > Date.now()) {
       const cd = el.createDiv({ cls: 'asc-timer' });
