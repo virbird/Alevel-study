@@ -539,8 +539,10 @@ export class MainView extends ItemView {
     for (const a of this.attachments) {
       const c = await this.plugin.vaultService.read(a.path);
       if (c) {
-        const truncated = c.length > 20000 ? c.slice(0, 20000) + '\n……（内容过长已截断）' : c;
-        extras.push(`════════ 插件注入：参考文档「${a.name}」════════\n以下是学生指定的参考文档，讨论时以它为准：\n${truncated}`);
+        // 图片 embed 换成标记，真实图片随下一条消息发送（见 openAttachPicker）
+        const marked = this.plugin.ielts.markImagesInText(c);
+        const truncated = marked.length > 20000 ? marked.slice(0, 20000) + '\n……（内容过长已截断）' : marked;
+        extras.push(`════════ 插件注入：参考文档「${a.name}」════════\n以下是学生指定的参考文档，讨论时以它为准（[图片: 名] 标记对应的图片会随消息发送）：\n${truncated}`);
       }
     }
     const built = await this.plugin.assembler.buildSystemPrompt(this.mode, extras);
@@ -768,7 +770,23 @@ export class MainView extends ItemView {
   private openAttachPicker(): void {
     new AttachPickerModal(this.app, this.attachments.map(a => a.path), f => {
       this.attachments.push({ path: f.path, name: f.name });
-      void this.rebuildSystemPrompt().then(() => this.render());
+      // 文档内嵌图片自动排队：随下一条消息发送，模型才能真正“看到”图片
+      void (async () => {
+        try {
+          const content = await this.plugin.vaultService.read(f.path);
+          if (content) {
+            const imgPaths = await this.plugin.ielts.listNoteImages(f.path, content);
+            for (const p of imgPaths) {
+              if (!this.pendingImages.includes(p)) this.pendingImages.push(p);
+            }
+            if (imgPaths.length) new Notice(`引用文档含 ${imgPaths.length} 张图片，将随下一条消息发送`);
+          }
+        } catch {
+          // 图片提取失败不阻塞文档引用
+        }
+        await this.rebuildSystemPrompt();
+        this.render();
+      })();
     }).open();
   }
 

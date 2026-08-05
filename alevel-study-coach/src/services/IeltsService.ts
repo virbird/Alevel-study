@@ -126,13 +126,42 @@ export class IeltsService {
     return out;
   }
 
-  /** 共用核心：扫描图片引用 → 逐个 resolve → 限制与标记 */
-  private async extractImages(body: string, resolve: (src: string) => Promise<ArrayBuffer | null>): Promise<NoteExtract> {
-    const images: ImagePart[] = [];
-    const skipped: string[] = [];
+  /** 列出笔记内图片的 vault 实际路径（引用文档附随发图用），同样受格式/数量限制 */
+  async listNoteImages(path: string, content: string): Promise<string[]> {
+    const body = parseFrontmatter(content).body;
+    const noteDir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+    const out: string[] = [];
+    for (const hit of this.collectImageHits(body)) {
+      if (out.length >= MAX_IMAGES) break;
+      const name = hit.src.split('/').pop() ?? hit.src;
+      if (!IMG_MIME[(name.split('.').pop() ?? '').toLowerCase()]) continue;
+      const candidates = [noteDir ? `${noteDir}/${hit.src}` : hit.src, hit.src];
+      for (const c of candidates) {
+        if (await this.vault.readBinary(c)) {
+          out.push(c);
+          break;
+        }
+      }
+    }
+    return out;
+  }
 
-    interface Hit { start: number; end: number; src: string }
-    const hits: Hit[] = [];
+  /** 把文本里的图片 embed 替换为 [图片: 名] 标记（纯文本，不读文件），供注入上下文使用 */
+  markImagesInText(body: string): string {
+    const hits = this.collectImageHits(body);
+    let text = '';
+    let cursor = 0;
+    for (const hit of hits) {
+      const name = hit.src.split('/').pop() ?? hit.src;
+      text += body.slice(cursor, hit.start) + `[图片: ${name}]`;
+      cursor = hit.end;
+    }
+    return text + body.slice(cursor);
+  }
+
+  /** 扫描文本中的图片引用（![[x.png]] 与 ![](path)） */
+  private collectImageHits(body: string): { start: number; end: number; src: string }[] {
+    const hits: { start: number; end: number; src: string }[] = [];
     for (const m of body.matchAll(/!\[\[([^\]|#]+?)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g)) {
       hits.push({ start: m.index!, end: m.index! + m[0].length, src: m[1].trim() });
     }
@@ -140,6 +169,14 @@ export class IeltsService {
       hits.push({ start: m.index!, end: m.index! + m[0].length, src: m[1].trim() });
     }
     hits.sort((a, b) => a.start - b.start);
+    return hits;
+  }
+
+  /** 共用核心：扫描图片引用 → 逐个 resolve → 限制与标记 */
+  private async extractImages(body: string, resolve: (src: string) => Promise<ArrayBuffer | null>): Promise<NoteExtract> {
+    const images: ImagePart[] = [];
+    const skipped: string[] = [];
+    const hits = this.collectImageHits(body);
 
     let text = '';
     let cursor = 0;

@@ -174,6 +174,17 @@ export async function run(): Promise<void> {
   eq('按路径载图跳过缺失', parts.map(p => p.name), ['题目.png']);
   eq('载图 base64 正确', parts[0].data, btoa(String.fromCharCode(1, 1)));
 
+  section('UT: 引用文档图片列表与标记');
+  const vDoc = new FakeVault();
+  vDoc.binaries['essay/题目.png'] = new Uint8Array([3]);
+  vDoc.binaries['any/deep/手写.jpg'] = new Uint8Array([4]);
+  const svcDoc = new IeltsService(vDoc.asService());
+  const docContent = '---\ntitle: t\n---\n\n题目：![[题目.png]] 另外 ![](any/deep/手写.jpg) 丢了 ![[missing.png]]';
+  const docImgs = await svcDoc.listNoteImages('essay/雅思-0726.md', docContent);
+  eq('文档内图片解析为 vault 实际路径（相对优先，缺失跳过）', docImgs, ['essay/题目.png', 'any/deep/手写.jpg']);
+  const marked = svcDoc.markImagesInText(docContent);
+  check('标记替换 embed 且保留正文', marked.includes('[图片: 题目.png]') && marked.includes('[图片: 手写.jpg]') && !marked.includes('![['));
+
   section('UT: 教练会话批改入库（registerGrade + 表达）');
   const vCoach = new FakeVault({ seed: {
     [GRADE_LEDGER_PATH]: '# 批改记录\n\n| 日期 | 笔记 | 总分 | TR | CC | LR | GRA |\n|------|------|------|----|----|----|----|\n',
