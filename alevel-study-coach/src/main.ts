@@ -27,8 +27,8 @@ export interface CoachPluginSettings {
   /** 统计分析节流：每周提问热点 / 每两周复发热点 */
   lastWeeklyStats: string;
   lastBiweeklyStats: string;
-  /** 候选模型列表（英文逗号分隔），教练页签可快捷切换 */
-  modelCandidates: string;
+  /** 候选模型列表：按 provider 分别配置（英文逗号分隔），教练页签可快捷切换 */
+  modelCandidates: Record<string, string>;
   /** 上下文窗口大小（token，用于展示与自动压缩阈值） */
   contextWindow: number;
 }
@@ -48,7 +48,7 @@ const DEFAULT_SETTINGS: CoachPluginSettings = {
   lastNoticeDate: '',
   lastWeeklyStats: '',
   lastBiweeklyStats: '',
-  modelCandidates: '',
+  modelCandidates: { 'openai-compat': '', anthropic: '' },
   contextWindow: 128000,
 };
 
@@ -141,8 +141,16 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const raw = ((await this.loadData()) ?? {}) as Record<string, unknown>;
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, raw);
     this.settings.llm = Object.assign({}, DEFAULT_SETTINGS.llm, this.settings.llm);
+    // 候选模型列表：按 provider 分开存；旧版全局字符串迁移到两个 provider
+    const mc = raw.modelCandidates;
+    if (typeof mc === 'string') {
+      this.settings.modelCandidates = { 'openai-compat': mc, anthropic: mc };
+    } else {
+      this.settings.modelCandidates = Object.assign({}, DEFAULT_SETTINGS.modelCandidates, (mc as Record<string, string>) ?? {});
+    }
   }
 
   async saveSettings(): Promise<void> {
@@ -277,12 +285,23 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     }
   }
 
-  /** 候选模型列表（当前模型始终包含） */
+  /** 当前 provider 的候选模型列表（当前模型始终包含） */
   modelList(): string[] {
-    const list = this.settings.modelCandidates.split(',').map(s => s.trim()).filter(Boolean);
+    const raw = this.settings.modelCandidates[this.settings.llm.provider] ?? '';
+    const list = raw.split(',').map(s => s.trim()).filter(Boolean);
     const cur = this.settings.llm.model.trim();
     if (cur && !list.includes(cur)) list.unshift(cur);
     return list;
+  }
+
+  /** 保存当前 provider 的候选模型列表 */
+  async setModelCandidates(value: string): Promise<void> {
+    this.settings.modelCandidates[this.settings.llm.provider] = value;
+    await this.saveSettings();
+  }
+
+  currentModelCandidates(): string {
+    return this.settings.modelCandidates[this.settings.llm.provider] ?? '';
   }
 
   /** 取消当前批改任务 */

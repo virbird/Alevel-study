@@ -65,12 +65,11 @@ export class StudyCoachSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('候选模型列表')
-      .setDesc('英文逗号分隔；教练页签顶部可快捷切换（如 gpt-4o-mini, deepseek-chat, claude-sonnet-4-20250514）')
+      .setName(`候选模型列表（当前接口：${llm.provider === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'}）`)
+      .setDesc('英文逗号分隔，每个接口可单独配置；教练页签顶部可快捷切换（如 gpt-4o-mini, deepseek-chat）')
       .addText(t =>
-        t.setValue(this.plugin.settings.modelCandidates).onChange(async v => {
-          this.plugin.settings.modelCandidates = v;
-          await this.plugin.saveSettings();
+        t.setValue(this.plugin.currentModelCandidates()).onChange(async v => {
+          await this.plugin.setModelCandidates(v);
         }),
       );
 
