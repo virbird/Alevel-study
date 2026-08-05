@@ -4,7 +4,7 @@ import type { ExpressionRow } from '../services/ExpressionService';
 import type { ChatMessage } from '../types';
 import { extractJson } from '../llm/LlmClient';
 
-/** 批改前确认目标文件：显示路径、字数、图片数，避免误批改 */
+/** 批改前确认目标文件：路径可编辑（vault 文件联想快速指定），显示预览，避免误批改 */
 export class GradeConfirmModal extends Modal {
   constructor(app: App, private plugin: ALevelStudyCoachPlugin, private path: string) {
     super(app);
@@ -14,28 +14,64 @@ export class GradeConfirmModal extends Modal {
     const { contentEl } = this;
     contentEl.addClass('asc-modal');
     contentEl.createEl('h2', { text: '确认批改目标' });
-    contentEl.createEl('div', { text: `将批改以下笔记（题目与作文可同篇，图片会发给视觉模型）：`, cls: 'asc-muted' });
-    contentEl.createEl('div', { text: this.path, cls: 'asc-confirm-path' });
+    contentEl.createEl('div', { text: '将批改以下笔记（题目与作文可同篇，图片会发给视觉模型）。可输入或从列表选择 vault 中的文件：', cls: 'asc-muted' });
+
+    const input = contentEl.createEl('input', { type: 'text', value: this.path });
+    input.style.width = '100%';
+    input.addClass('asc-confirm-input');
+    const listEl = contentEl.createDiv({ cls: 'asc-picker-list' });
     const info = contentEl.createDiv({ cls: 'asc-muted' });
     info.setText('正在预览……');
 
     const bar = contentEl.createDiv({ cls: 'asc-row' });
     const goBtn = bar.createEl('button', { text: '开始批改', cls: 'asc-btn asc-btn-cta' });
     goBtn.addEventListener('click', () => {
+      const path = input.value.trim();
+      if (!path) return;
       this.close();
-      void this.plugin.gradeFilePath(this.path);
+      void this.plugin.gradeFilePath(path);
     });
     bar.createEl('button', { text: '取消', cls: 'asc-btn' }).addEventListener('click', () => this.close());
 
-    void (async () => {
+    /** 联想列表：按输入过滤 vault 内 Markdown（精确/开头优先） */
+    const renderSuggestions = () => {
+      listEl.empty();
+      const kw = input.value.trim().toLowerCase();
+      const paths = this.app.vault.getMarkdownFiles().map(f => f.path);
+      const matched = paths
+        .filter(p => !kw || p.toLowerCase().includes(kw))
+        .sort((a, b) => {
+          const rank = (p: string) => (kw && p.toLowerCase() === kw ? 0 : kw && p.toLowerCase().startsWith(kw) ? 1 : 2);
+          return rank(a) - rank(b) || a.localeCompare(b);
+        })
+        .slice(0, 8);
+      for (const p of matched) {
+        const item = listEl.createDiv({ cls: 'asc-picker-item', text: p });
+        item.addEventListener('click', () => {
+          input.value = p;
+          listEl.empty();
+          void preview();
+        });
+      }
+    };
+
+    /** 预览目标：字数/图片/跳过原因；异常时禁用开始按钮 */
+    const preview = async () => {
+      const path = input.value.trim();
+      if (!path) {
+        info.setText('请输入或选择笔记路径');
+        goBtn.disabled = true;
+        return;
+      }
+      info.setText('正在预览……');
       try {
-        const content = await this.plugin.vaultService.read(this.path);
+        const content = await this.plugin.vaultService.read(path);
         if (!content) {
-          info.setText('笔记不存在或无法读取');
+          info.setText(`笔记不存在：${path}`);
           goBtn.disabled = true;
           return;
         }
-        const { text, images, skipped } = await this.plugin.ielts.extractNoteImages(this.path, content);
+        const { text, images, skipped } = await this.plugin.ielts.extractNoteImages(path, content);
         const textLen = text.replace(/\[图片[^\]]*\]/g, '').trim().length;
         const parts = [`正文约 ${textLen} 字`, `图片 ${images.length} 张`];
         if (skipped.length) parts.push(`跳过 ${skipped.length} 张（${skipped.join('、')}）`);
@@ -44,14 +80,26 @@ export class GradeConfirmModal extends Modal {
           goBtn.disabled = true;
         } else if (textLen < 40 && images.length > 0) {
           info.setText(parts.join(' · ') + ' —— 内容主要在图片中，将由视觉模型直接识别批改');
+          goBtn.disabled = false;
         } else {
           info.setText(parts.join(' · '));
+          goBtn.disabled = false;
         }
       } catch (e) {
         info.setText(`预览失败：${e instanceof Error ? e.message : String(e)}`);
         goBtn.disabled = true;
       }
-    })();
+    };
+
+    input.addEventListener('input', renderSuggestions);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        listEl.empty();
+        void preview();
+      }
+    });
+    renderSuggestions();
+    void preview();
   }
 
   onClose(): void {

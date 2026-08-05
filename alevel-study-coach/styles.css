@@ -358,6 +358,11 @@
   word-break: break-all;
 }
 
+.asc-confirm-input {
+  width: 100%;
+  margin: 6px 0;
+}
+
 /* 批改任务卡片与进度条 */
 .asc-grading-card {
   border-left: 3px solid var(--interactive-accent);
