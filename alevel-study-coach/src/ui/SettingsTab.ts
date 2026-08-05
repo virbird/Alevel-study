@@ -1,5 +1,6 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import type ALevelStudyCoachPlugin from '../main';
+import { LlmClient } from '../llm/LlmClient';
 
 export class StudyCoachSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: ALevelStudyCoachPlugin) {
@@ -58,8 +59,8 @@ export class StudyCoachSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName('模型')
-      .setDesc('当前使用的模型，如 gpt-4o-mini / claude-sonnet-4-20250514 / deepseek-chat')
+      .setName('当前模型')
+      .setDesc('当前实际使用的模型（也可在下方模型列表「设为默认」或教练页签顶部切换）')
       .addText(t =>
         t.setValue(llm.model).onChange(async v => {
           llm.model = v.trim();
@@ -67,23 +68,70 @@ export class StudyCoachSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl)
-      .setName(`默认模型（当前接口：${llm.provider === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'}）`)
-      .setDesc('切换到该接口时自动应用的模型；建议填候选列表中的一个')
-      .addText(t =>
-        t.setValue(this.plugin.currentModelDefault()).onChange(async v => {
-          await this.plugin.setModelDefault(v);
-        }),
-      );
+    // ── 模型管理：逐个添加、单独测试、设为默认、删除（按当前接口）──
+    containerEl.createEl('h3', { text: `模型管理（当前接口：${llm.provider === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'}）` });
+    containerEl.createEl('p', {
+      text: '逐个添加该接口的模型；每个可单独测试、设为默认或删除。切换接口后此区显示对应接口的列表。',
+      cls: 'setting-item-description',
+    });
+    const listEl = containerEl.createDiv({ cls: 'asc-model-list' });
+    const renderList = () => {
+      listEl.empty();
+      const models = this.plugin.modelList();
+      const def = this.plugin.currentModelDefault() || this.plugin.settings.llm.model;
+      if (!models.length) {
+        listEl.createDiv({ text: '还没有模型——在下方输入模型名添加', cls: 'asc-muted' });
+        return;
+      }
+      for (const m of models) {
+        const item = listEl.createDiv({ cls: 'asc-model-item' });
+        const name = item.createDiv({ cls: 'asc-model-name' });
+        if (m === def) name.createSpan({ text: '★ ', cls: 'asc-model-star' });
+        name.createSpan({ text: m });
+        if (m === def) name.createSpan({ text: ' 默认', cls: 'asc-model-badge' });
+        const actions = item.createDiv({ cls: 'asc-model-actions' });
+        if (m !== def) {
+          actions.createEl('button', { text: '设为默认', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
+            await this.plugin.setModelDefault(m);
+            new Notice(`默认模型已设为：${m}`);
+            renderList();
+          });
+        }
+        const testBtn = actions.createEl('button', { text: '测试', cls: 'asc-btn asc-btn-small' });
+        testBtn.addEventListener('click', () => void this.testModel(m, testBtn));
+        actions.createEl('button', { text: '✕', cls: 'asc-btn asc-btn-small asc-btn-danger' }).addEventListener('click', async () => {
+          await this.plugin.removeModel(m);
+          renderList();
+        });
+      }
+    };
+    renderList();
 
-    new Setting(containerEl)
-      .setName(`候选模型列表（当前接口：${llm.provider === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'}）`)
-      .setDesc('英文逗号分隔，每个接口可单独配置；教练页签顶部可快捷切换（如 gpt-4o-mini, deepseek-chat）')
-      .addText(t =>
-        t.setValue(this.plugin.currentModelCandidates()).onChange(async v => {
-          await this.plugin.setModelCandidates(v);
-        }),
-      );
+    const addRow = containerEl.createDiv({ cls: 'asc-model-add-row' });
+    const inputEl = addRow.createEl('input', { type: 'text', placeholder: '模型名，如 gpt-4o-mini / deepseek-chat，回车添加' });
+    const addBtn = addRow.createEl('button', { text: '添加模型', cls: 'asc-btn' });
+    const handleAdd = async () => {
+      const name = inputEl.value.trim();
+      if (!name) return;
+      const existing = this.plugin.modelList();
+      if (existing.includes(name)) {
+        new Notice(`模型已存在：${name}`);
+        inputEl.value = '';
+        return;
+      }
+      const merged = [...existing, name];
+      await this.plugin.setModelCandidates(merged.join(', '));
+      if (!this.plugin.currentModelDefault()) {
+        await this.plugin.setModelDefault(name);
+      }
+      inputEl.value = '';
+      new Notice(`已添加模型：${name}（可点「测试」验证）`);
+      renderList();
+    };
+    addBtn.addEventListener('click', () => void handleAdd());
+    inputEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); void handleAdd(); }
+    });
 
     new Setting(containerEl)
       .setName('上下文窗口大小')
@@ -120,5 +168,29 @@ export class StudyCoachSettingTab extends PluginSettingTab {
       text: '所有学习数据保存在 vault 的 StudyCoach/ 目录（纯 Markdown，可用 git / iCloud 同步）。提示词在 StudyCoach/prompts/ 下，可直接编辑。',
       cls: 'setting-item-description',
     });
+  }
+
+  /** 单独测试某个模型：临时用当前接口配置 + 指定模型发一个小请求 */
+  private async testModel(model: string, btn: HTMLButtonElement): Promise<void> {
+    const s = this.plugin.settings.llm;
+    if (!s.apiKey) {
+      new Notice('请先填写 API Key');
+      return;
+    }
+    const client = new LlmClient({ provider: s.provider, baseUrl: s.baseUrl, apiKey: s.apiKey, model });
+    btn.setText('测试中…');
+    btn.disabled = true;
+    try {
+      const reply = await client.chat({
+        messages: [{ role: 'user', content: '请只回复两个字：正常' }],
+        maxTokens: 32,
+      });
+      new Notice(`✅ ${model} 可用：${reply.slice(0, 30)}`, 6000);
+    } catch (e) {
+      new Notice(`❌ ${model} 不可用：${e instanceof Error ? e.message : String(e)}`, 10000);
+    } finally {
+      btn.setText('测试');
+      btn.disabled = false;
+    }
   }
 }

@@ -332,6 +332,16 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     await this.saveSettings();
   }
 
+  /** 从当前 provider 的候选列表移除模型；若移的是默认/当前模型，回退到列表第一个 */
+  async removeModel(model: string): Promise<void> {
+    const p = this.settings.llm.provider;
+    const list = (this.settings.modelCandidates[p] ?? '').split(',').map(s => s.trim()).filter(s => s && s !== model);
+    this.settings.modelCandidates[p] = list.join(', ');
+    if (this.settings.modelDefaults[p] === model) this.settings.modelDefaults[p] = list[0] ?? '';
+    if (this.settings.llm.model === model) this.settings.llm.model = list[0] ?? '';
+    await this.saveSettings();
+  }
+
   /** 取消当前批改任务 */
   cancelGrading(): void {
     if (this.gradingTask?.status !== 'running') return;

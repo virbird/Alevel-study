@@ -464,6 +464,57 @@
   line-height: 1;
 }
 
+/* 设置页模型管理列表 */
+.asc-model-list {
+  margin: 8px 0;
+}
+
+.asc-model-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
+.asc-model-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asc-model-star {
+  color: var(--text-warning);
+}
+
+.asc-model-badge {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.asc-model-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.asc-model-add-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.asc-model-add-row input {
+  flex: 1;
+}
+
+.asc-btn-danger {
+  color: var(--text-error);
+}
+
 /* 首页紧凑化：待复查卡片、动作行、卡片间距 */
 .asc-due-card {
   border-left: 3px solid var(--text-warning);
