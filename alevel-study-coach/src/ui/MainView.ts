@@ -367,10 +367,10 @@ export class MainView extends ItemView {
     const el = this.bodyEl;
 
     const bar = el.createDiv({ cls: 'asc-coach-bar' });
-    const select = bar.createEl('select', { cls: 'asc-select' });
+    const select = bar.createEl('select', { cls: 'asc-select asc-subject-select' });
     for (const s of SUBJECTS) {
-      // 紧凑显示：只取标签前两个字（悬停可见全名）
-      select.createEl('option', { text: s.label.slice(0, 2), value: s.key });
+      // option 用全名：展开下拉时可见全名；收起时由 CSS 宽度截断为前几个字
+      select.createEl('option', { text: s.label, value: s.key });
     }
     select.value = this.mode;
     select.setAttr('title', SUBJECTS.find(s => s.key === this.mode)?.label ?? '');

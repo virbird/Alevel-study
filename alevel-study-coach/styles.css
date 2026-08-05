@@ -410,6 +410,16 @@
   gap: 4px;
 }
 
+/* 科目选择：收起时宽度截断（约前四个字），展开下拉时 option 全名可见 */
+.asc-subject-select {
+  width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  padding: 4px 4px;
+}
+
 .asc-model-bar {
   display: flex;
   align-items: center;
