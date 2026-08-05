@@ -234,10 +234,9 @@ export class MainView extends ItemView {
     ov.createEl('div', { text: `📚 术语 待抽查 ${unstable} · 已稳定 ${terms.filter(t => t.status === '已稳定').length} · 共 ${terms.length}`, cls: 'asc-row' });
     ov.createEl('div', { text: `🎓 ${profile.stage} · 目标全 A* · 牛剑方向 ${profile.oxbridge.direction}`, cls: 'asc-row asc-muted' });
 
-    // 4. 动作（一排小按钮，主操作突出）
+    // 4. 动作（一排小按钮，只留教练会话覆盖不了的独立功能；
+    // 求助去「教练」页签，批改作文用命令面板「雅思：批改当前作文」）
     const actionsRow = el.createDiv({ cls: 'asc-row asc-home-actions' });
-    actionsRow.createEl('button', { text: '📖 开始求助', cls: 'asc-btn asc-btn-cta' }).addEventListener('click', () => { this.tab = 'coach'; this.render(); });
-    actionsRow.createEl('button', { text: '✍️ 批改作文', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.plugin.gradeActiveEssay());
     actionsRow.createEl('button', { text: `🗣 表达抽查${dueExprs.length ? `（${dueExprs.length}）` : ''}`, cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.plugin.startExpressionDrill());
     actionsRow.createEl('button', { text: '📚 术语抽查', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.startDrill());
     actionsRow.createEl('button', { text: '📊 周报', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.plugin.exportWeeklyReport());
