@@ -45,6 +45,23 @@ export function toAnthropicUserContent(text: string, images?: ImagePart[]): unkn
  * Phase 1 只需要非流式调用；支持 OpenAI 兼容端点与 Anthropic 原生端点。
  * 使用 obsidian 的 requestUrl 以绕开桌面端 CORS 限制（iPad 同样可用）。
  */
+/**
+ * 取消/超时语义：obsidian 1.5.7 的 requestUrl 不支持 signal，
+ * 在客户端层用 abort 事件中断等待（导出供测试）。
+ */
+export function withSignal<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return p;
+  if (signal.aborted) return Promise.reject(new Error('aborted'));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new Error('aborted'));
+    signal.addEventListener('abort', onAbort, { once: true });
+    p.then(
+      v => { signal.removeEventListener('abort', onAbort); resolve(v); },
+      e => { signal.removeEventListener('abort', onAbort); reject(e); },
+    );
+  });
+}
+
 export class LlmClient {
   constructor(private settings: LlmSettings) {}
 
@@ -63,7 +80,7 @@ export class LlmClient {
     if (opts.system) messages.push({ role: 'system', content: opts.system });
     for (const m of opts.messages) messages.push({ role: m.role, content: toOpenAIUserContent(m.content, m.images) });
 
-    const res = await requestUrl({
+    const res = await withSignal(requestUrl({
       url,
       method: 'POST',
       headers: {
@@ -77,8 +94,7 @@ export class LlmClient {
         temperature: opts.temperature ?? 0.7,
       }),
       throw: false,
-      signal: opts.signal,
-    });
+    }), opts.signal);
 
     if (res.status >= 400) {
       throw new Error(`LLM 请求失败 (${res.status})：${extractError(res.text)}`);
@@ -91,7 +107,7 @@ export class LlmClient {
 
   private async chatAnthropic(opts: ChatOptions): Promise<string> {
     const url = this.settings.baseUrl.replace(/\/+$/, '') + '/v1/messages';
-    const res = await requestUrl({
+    const res = await withSignal(requestUrl({
       url,
       method: 'POST',
       headers: {
@@ -108,8 +124,7 @@ export class LlmClient {
         messages: opts.messages.map(m => ({ role: m.role, content: toAnthropicUserContent(m.content, m.images) })),
       }),
       throw: false,
-      signal: opts.signal,
-    });
+    }), opts.signal);
 
     if (res.status >= 400) {
       throw new Error(`LLM 请求失败 (${res.status})：${extractError(res.text)}`);

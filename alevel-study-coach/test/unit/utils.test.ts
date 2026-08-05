@@ -5,7 +5,7 @@ import {
   parseFrontmatter, stringifyFrontmatter, parseTable, renderRow,
   parseSimpleFrontmatter, stringifySimpleFrontmatter,
 } from '../../src/utils/markdown';
-import { extractJson } from '../../src/llm/LlmClient';
+import { extractJson, withSignal } from '../../src/llm/LlmClient';
 
 export async function run(): Promise<void> {
   section('UT: utils/date');
@@ -49,4 +49,19 @@ export async function run(): Promise<void> {
   check('extractJson 损坏 JSON 返回 null', extractJson('{broken') === null);
   const nested = '```json\n{"sessionTag": {"topic": "Moments"}}\n```';
   eq('extractJson 嵌套对象', extractJson<{ sessionTag: { topic: string } }>(nested)?.sessionTag.topic, 'Moments');
+
+  section('UT: withSignal 取消/超时语义');
+  const c0 = new AbortController();
+  c0.abort();
+  let abortedErr = '';
+  try { await withSignal(Promise.resolve('x'), c0.signal); } catch (e) { abortedErr = (e as Error).message; }
+  eq('已取消的 signal 立即拒绝', abortedErr, 'aborted');
+  const c1 = new AbortController();
+  const slow = new Promise<string>(res => setTimeout(() => res('done'), 30));
+  setTimeout(() => c1.abort(), 5);
+  let midErr = '';
+  try { await withSignal(slow, c1.signal); } catch (e) { midErr = (e as Error).message; }
+  eq('等待中取消 → aborted', midErr, 'aborted');
+  const c2 = new AbortController();
+  eq('未取消则正常返回', await withSignal(Promise.resolve('ok'), c2.signal), 'ok');
 }

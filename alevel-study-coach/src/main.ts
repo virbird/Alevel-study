@@ -246,9 +246,9 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   /** 长任务结束后刷新插件视图（若打开） */
   private refreshCoachViews(): void {
     const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
-    const view = leaf?.view;
-    if (view && typeof (view as { refresh?: () => void }).refresh === 'function') {
-      (view as { refresh: () => void }).refresh();
+    const view = leaf?.view as unknown as { refresh?: () => void } | undefined;
+    if (view && typeof view.refresh === 'function') {
+      view.refresh();
     }
   }
 
