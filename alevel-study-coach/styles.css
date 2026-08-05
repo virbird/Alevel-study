@@ -358,10 +358,30 @@
   word-break: break-all;
 }
 
-.asc-status-notice {
-  white-space: pre-line;
-  text-align: left;
-  max-width: 340px;
+/* 批改任务卡片与进度条 */
+.asc-grading-card {
+  border-left: 3px solid var(--interactive-accent);
+}
+
+.asc-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--background-modifier-border);
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.asc-progress-bar {
+  height: 100%;
+  width: 35%;
+  border-radius: 3px;
+  background: var(--interactive-accent);
+  animation: asc-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes asc-indeterminate {
+  0% { margin-left: -35%; }
+  100% { margin-left: 100%; }
 }
 
 /* 选择器弹窗列表 */

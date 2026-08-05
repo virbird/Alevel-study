@@ -29,6 +29,16 @@ export interface CoachPluginSettings {
   lastBiweeklyStats: string;
 }
 
+/** 批改任务状态：后台运行，雅思页签内展示进度与结果，不阻塞其他操作 */
+export interface GradingTask {
+  path: string;
+  basename: string;
+  status: 'running' | 'success' | 'cancelled' | 'timeout' | 'failed';
+  started: number;
+  elapsed: number;
+  message: string;   // 终态摘要（成功/失败原因）
+}
+
 const DEFAULT_SETTINGS: CoachPluginSettings = {
   llm: { provider: 'openai-compat', baseUrl: 'https://api.openai.com/v1', apiKey: '', model: '' },
   lastNoticeDate: '',
@@ -53,6 +63,11 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   expressions!: ExpressionService;
   reports!: ReportService;
   assembler!: PromptAssembler;
+  /** 当前批改任务（后台运行，雅思页签展示） */
+  gradingTask: GradingTask | null = null;
+  private gradingAbort: AbortController | null = null;
+  private gradingCancelled = false;
+  private gradingTicker: number | null = null;
   private statusBarEl!: HTMLElement;
 
   async onload(): Promise<void> {
@@ -196,58 +211,81 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     new GradeConfirmModal(this.app, this, file.path).open();
   }
 
-  /** 批改指定笔记：题目+作文可同篇，可含图片；六段输出回填 ## AI 批改 + 分数进台账 */
+  /**
+   * 批改指定笔记：后台任务模式——立即返回，雅思页签显示任务卡片（进度+可取消），
+   * 用户可切走干别的，回来直接看结果。
+   */
   async gradeFilePath(path: string): Promise<void> {
     if (!this.llm.configured) {
       new Notice('请先在设置里配置 LLM');
       return;
     }
+    if (this.gradingTask?.status === 'running') {
+      new Notice('已有一个批改任务进行中，等它完成或取消后再发起');
+      return;
+    }
     const basename = path.split('/').pop()?.replace(/\.md$/, '') ?? path;
-
-    // 持续状态提示：进行中显示已等待秒数，可随时取消；结束明确报成功/超时/失败
     const controller = new AbortController();
-    let cancelled = false;
-    const started = Date.now();
-    const status = new StatusNotice(`正在批改：${basename}…\n等待模型响应 0 秒（含图片时通常需 1–4 分钟）`, () => {
-      cancelled = true;
-      controller.abort();
-    });
-    const ticker = window.setInterval(() => {
-      status.update(`正在批改：${basename}…\n等待模型响应 ${Math.round((Date.now() - started) / 1000)} 秒（含图片时通常需 1–4 分钟）`);
+    this.gradingAbort = controller;
+    this.gradingCancelled = false;
+    const task: GradingTask = { path, basename, status: 'running', started: Date.now(), elapsed: 0, message: '' };
+    this.gradingTask = task;
+    if (this.gradingTicker !== null) window.clearInterval(this.gradingTicker);
+    this.gradingTicker = window.setInterval(() => {
+      task.elapsed = Math.round((Date.now() - task.started) / 1000);
     }, 1000);
     const timeoutId = window.setTimeout(() => controller.abort(), GRADE_TIMEOUT_MS);
+    this.refreshCoachViews(true);
 
     try {
       const result = await this.ielts.gradeNote(path, this.llm, controller.signal);
       const added = await this.expressions.appendAll(result.expressions, basename);
       const s = result.scores;
-      const secs = Math.round((Date.now() - started) / 1000);
-      new Notice(
-        `✅ 批改成功：${basename}（用时 ${secs} 秒）${s.overall !== null ? `，预估总分 ${s.overall}` : ''}${result.imageCount ? `，含 ${result.imageCount} 张图片` : ''}${added ? `，${added} 条高分表达进积累库` : ''}。结果已写入笔记「## AI 批改」小节。`,
-        15000,
-      );
+      task.status = 'success';
+      task.message =
+        `用时 ${task.elapsed} 秒${s.overall !== null ? ` · 预估总分 ${s.overall}` : ''}` +
+        `${result.imageCount ? ` · 含 ${result.imageCount} 张图片` : ''}${added ? ` · ${added} 条高分表达进积累库` : ''}` +
+        ' · 结果已写入笔记「## AI 批改」小节';
+      new Notice(`✅ 批改成功：${basename}，去雅思页签查看详情`, 6000);
     } catch (e) {
-      const secs = Math.round((Date.now() - started) / 1000);
-      if (cancelled) {
-        new Notice(`已取消批改：${basename}（未产生任何写入）`);
+      if (this.gradingCancelled) {
+        task.status = 'cancelled';
+        task.message = '已取消，未产生任何写入';
       } else if (controller.signal.aborted) {
-        new Notice(`⏱ 批改超时：${basename}（等待超过 ${GRADE_TIMEOUT_MS / 1000} 秒）。请检查网络/模型后重试，或换更快的模型。`, 15000);
+        task.status = 'timeout';
+        task.message = `等待超过 ${GRADE_TIMEOUT_MS / 1000} 秒。请检查网络/模型后重试，或换更快的模型`;
+        new Notice(`⏱ 批改超时：${basename}`, 8000);
       } else {
-        new Notice(`❌ 批改失败：${basename} —— ${e instanceof Error ? e.message : String(e)}`, 15000);
+        task.status = 'failed';
+        task.message = e instanceof Error ? e.message : String(e);
+        new Notice(`❌ 批改失败：${basename}`, 8000);
       }
     } finally {
-      window.clearInterval(ticker);
+      if (this.gradingTicker !== null) {
+        window.clearInterval(this.gradingTicker);
+        this.gradingTicker = null;
+      }
       window.clearTimeout(timeoutId);
-      status.close();
-      this.refreshCoachViews();
+      this.gradingAbort = null;
+      this.refreshCoachViews(true);
     }
   }
 
-  /** 长任务结束后刷新插件视图（若打开） */
-  private refreshCoachViews(): void {
+  /** 取消当前批改任务 */
+  cancelGrading(): void {
+    if (this.gradingTask?.status !== 'running') return;
+    this.gradingCancelled = true;
+    this.gradingAbort?.abort();
+  }
+
+  /** 长任务状态变化后刷新插件视图；switchToIelts=true 时切到雅思页签（不打断教练会话） */
+  private refreshCoachViews(switchToIelts = false): void {
     const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
-    const view = leaf?.view as unknown as { refresh?: () => void } | undefined;
-    if (view && typeof view.refresh === 'function') {
+    const view = leaf?.view as unknown as { refresh?: () => void; showIelts?: () => void; currentTab?: string } | undefined;
+    if (!view) return;
+    if (switchToIelts && view.showIelts && view.currentTab !== 'coach') {
+      view.showIelts();
+    } else if (view.refresh) {
       view.refresh();
     }
   }
@@ -285,31 +323,3 @@ export function getLeafForView(plugin: Plugin): WorkspaceLeaf | null {
 
 /** 批改超时：含图片的六段输出较慢，给足余量 */
 const GRADE_TIMEOUT_MS = 300_000;
-
-/** 持续状态通知：不自动消失，可更新文案，可附取消按钮 */
-class StatusNotice {
-  private notice: Notice;
-  private textEl: HTMLElement;
-
-  constructor(text: string, onCancel?: () => void) {
-    this.notice = new Notice('', 0);
-    const el = this.notice.noticeEl;
-    el.empty();
-    el.addClass('asc-status-notice');
-    this.textEl = el.createDiv();
-    this.textEl.setText(text);
-    if (onCancel) {
-      const btn = el.createEl('button', { text: '取消', cls: 'asc-btn asc-btn-small' });
-      btn.style.marginTop = '6px';
-      btn.addEventListener('click', onCancel);
-    }
-  }
-
-  update(text: string): void {
-    this.textEl.setText(text);
-  }
-
-  close(): void {
-    this.notice.hide();
-  }
-}

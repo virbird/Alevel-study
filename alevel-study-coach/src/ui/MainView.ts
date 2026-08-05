@@ -48,6 +48,8 @@ export class MainView extends ItemView {
   /** 计时跑满后的「思考凭证」：下一条消息携带标注后清零 */
   private thinkCredit = 0;
   private timerInterval: number | null = null;
+  /** 批改任务卡片秒数刷新定时器 */
+  private taskTicker: number | null = null;
 
   constructor(leaf: WorkspaceLeaf, private plugin: ALevelStudyCoachPlugin) {
     super(leaf);
@@ -73,11 +75,26 @@ export class MainView extends ItemView {
       window.clearInterval(this.timerInterval);
       this.timerInterval = null;
     }
+    if (this.taskTicker !== null) {
+      window.clearInterval(this.taskTicker);
+      this.taskTicker = null;
+    }
     this.containerEl.empty();
   }
 
   /** 长任务（批改等）完成后由插件调用刷新 */
   refresh(): void {
+    this.render();
+  }
+
+  /** 当前页签（供插件判断是否可自动切到雅思页签） */
+  get currentTab(): string {
+    return this.tab;
+  }
+
+  /** 切到雅思页签（批改任务开始/结束时由插件调用） */
+  showIelts(): void {
+    this.tab = 'ielts';
     this.render();
   }
 
@@ -127,6 +144,9 @@ export class MainView extends ItemView {
   private async renderIelts(): Promise<void> {
     const el = this.bodyEl;
     const profile = await this.plugin.profiles.load();
+
+    // 0. 批改任务卡片（后台运行，不阻塞其他操作）
+    this.renderGradingTask(el);
 
     // 1. 分数趋势与短板
     const scores = await this.plugin.ielts.loadScores();
@@ -320,6 +340,43 @@ export class MainView extends ItemView {
     const stable = all.filter(t => t.status === '已稳定');
     if (stable.length) sampled.push(shuffle(stable)[0]); // 每周随机回抽，防假性掌握
     new DrillModal(this.app, this.plugin, sampled, () => this.render()).open();
+  }
+
+  /** 批改任务卡片：进行中（进度条+秒数+取消）/ 终态（结果摘要+打开笔记/关闭） */
+  private renderGradingTask(el: HTMLElement): void {
+    const task = this.plugin.gradingTask;
+    if (this.taskTicker !== null) {
+      window.clearInterval(this.taskTicker);
+      this.taskTicker = null;
+    }
+    if (!task) return;
+
+    const card = el.createDiv({ cls: 'asc-card asc-grading-card' });
+    if (task.status === 'running') {
+      const label = card.createEl('div', { cls: 'asc-card-title' });
+      const setText = () => label.setText(`🕐 正在批改：${task.basename} · 已等待 ${this.plugin.gradingTask?.elapsed ?? 0} 秒（含图片通常 1–4 分钟）——可以先切走干别的，回来看结果`);
+      setText();
+      card.createDiv({ cls: 'asc-progress' }).createDiv({ cls: 'asc-progress-bar' });
+      card.createDiv({ cls: 'asc-row' })
+        .createEl('button', { text: '取消批改', cls: 'asc-btn asc-btn-small' })
+        .addEventListener('click', () => this.plugin.cancelGrading());
+      this.taskTicker = window.setInterval(() => {
+        if (this.plugin.gradingTask?.status === 'running') setText();
+        else if (this.taskTicker !== null) { window.clearInterval(this.taskTicker); this.taskTicker = null; }
+      }, 1000);
+    } else {
+      const icon = { success: '✅', cancelled: '⏹', timeout: '⏱', failed: '❌' }[task.status];
+      card.createEl('div', { text: `${icon} 批改${task.status === 'success' ? '成功' : task.status === 'cancelled' ? '已取消' : task.status === 'timeout' ? '超时' : '失败'}：${task.basename}`, cls: 'asc-card-title' });
+      card.createEl('div', { text: task.message, cls: 'asc-row asc-muted' });
+      const btns = card.createDiv({ cls: 'asc-row' });
+      if (task.status === 'success') {
+        btns.createEl('button', { text: '打开批改后的笔记', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => this.openFile(task.path));
+      }
+      btns.createEl('button', { text: '关闭', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+        this.plugin.gradingTask = null;
+        this.render();
+      });
+    }
   }
 
   // ─── 教练 ────────────────────────────────────────────────
