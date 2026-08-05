@@ -389,7 +389,27 @@
   100% { margin-left: 100%; }
 }
 
-/* 全局模型栏（页面顶部）与上下文指示（紧贴会话窗口） */
+/* 顶部一行：模型（缩小）+ 标题 + 快捷操作；教练工具栏不换行 */
+.asc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.asc-header .asc-model-select {
+  max-width: 132px;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+.asc-coach-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
 .asc-model-bar {
   display: flex;
   align-items: center;

@@ -104,27 +104,24 @@ export class MainView extends ItemView {
     root.empty();
     root.addClass('asc-root');
 
-    // 顶部：全局模型选择（作用于所有功能：教练/批改/抽查/周报）
-    const modelBar = root.createDiv({ cls: 'asc-model-bar' });
-    const gSel = modelBar.createEl('select', { cls: 'asc-select asc-model-select' });
+    // 顶部一行：全局模型选择（缩小）+ 标题 + 快捷操作
+    const header = root.createDiv({ cls: 'asc-header' });
+    const gSel = header.createEl('select', { cls: 'asc-select asc-model-select' });
     const gModels = this.plugin.modelList();
     const gCur = this.plugin.settings.llm.model;
     const gDef = this.plugin.currentModelDefault();
-    if (!gModels.length) gSel.createEl('option', { text: gCur || '未配置模型（去设置页）', value: gCur });
+    if (!gModels.length) gSel.createEl('option', { text: gCur || '未配置', value: gCur });
     for (const m of gModels) {
-      gSel.createEl('option', { text: m === gDef ? `${m} ★默认` : m, value: m });
+      gSel.createEl('option', { text: m === gDef ? `${m} ★` : m, value: m });
     }
     gSel.value = gCur;
-    gSel.setAttr('title', '全局模型：影响教练会话、作文批改、术语抽查等所有 AI 调用');
+    gSel.setAttr('title', `全局模型：影响教练/批改/抽查等所有 AI 调用。当前：${gCur}${gDef ? `，默认：${gDef}` : ''}`);
     gSel.addEventListener('change', async () => {
       this.plugin.settings.llm.model = gSel.value;
       await this.plugin.saveSettings();
       new Notice(`模型已切换：${gSel.value}`);
       this.render();
     });
-
-    // 头部
-    const header = root.createDiv({ cls: 'asc-header' });
     header.createSpan({ text: '🎓 A-Level Study Coach', cls: 'asc-title' });
     const actions = header.createDiv({ cls: 'asc-header-actions' });
     actions.createEl('button', { text: '随手记', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => new CaptureModal(this.app, this.plugin).open());
@@ -372,10 +369,15 @@ export class MainView extends ItemView {
     const bar = el.createDiv({ cls: 'asc-coach-bar' });
     const select = bar.createEl('select', { cls: 'asc-select' });
     for (const s of SUBJECTS) {
-      select.createEl('option', { text: s.label, value: s.key });
+      // 紧凑显示：只取标签前两个字（悬停可见全名）
+      select.createEl('option', { text: s.label.slice(0, 2), value: s.key });
     }
     select.value = this.mode;
-    select.addEventListener('change', () => { this.mode = select.value as ModeKey; });
+    select.setAttr('title', SUBJECTS.find(s => s.key === this.mode)?.label ?? '');
+    select.addEventListener('change', () => {
+      this.mode = select.value as ModeKey;
+      select.setAttr('title', SUBJECTS.find(s => s.key === this.mode)?.label ?? '');
+    });
 
     bar.createEl('button', { text: '新会话', cls: 'asc-btn' }).addEventListener('click', () => void this.startSession());
     bar.createEl('button', { text: '结题', cls: 'asc-btn' }).addEventListener('click', () => void this.send(CLOSE_PROMPT));
