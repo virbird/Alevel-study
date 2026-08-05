@@ -145,9 +145,6 @@ export class MainView extends ItemView {
     const el = this.bodyEl;
     const profile = await this.plugin.profiles.load();
 
-    // 0. 批改任务卡片（后台运行，不阻塞其他操作）
-    this.renderGradingTask(el);
-
     // 1. 分数趋势与短板
     const scores = await this.plugin.ielts.loadScores();
     const sc = el.createDiv({ cls: 'asc-card' });
@@ -209,6 +206,9 @@ export class MainView extends ItemView {
       const last = scores[scores.length - 1].file;
       wbtns.createEl('button', { text: '打开最近一篇', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => this.openFile(last));
     }
+
+    // 5. 批改任务卡片：紧跟工作流，语义相关的放在一起（后台运行，不阻塞其他操作）
+    this.renderGradingTask(el);
   }
 
   // ─── 首页 ────────────────────────────────────────────────
@@ -353,6 +353,7 @@ export class MainView extends ItemView {
 
     const card = el.createDiv({ cls: 'asc-card asc-grading-card' });
     if (task.status === 'running') {
+      card.scrollIntoView({ block: 'nearest' });
       const label = card.createEl('div', { cls: 'asc-card-title' });
       const setText = () => label.setText(`🕐 正在批改：${task.basename} · 已等待 ${this.plugin.gradingTask?.elapsed ?? 0} 秒（含图片通常 1–4 分钟）——可以先切走干别的，回来看结果`);
       setText();
