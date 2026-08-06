@@ -87,4 +87,21 @@ export async function run(): Promise<void> {
   eq('进展条目追加', content.split('\n').filter(l => l.startsWith('- ')).length, 2);
   const summary = await prog.recentSummary(['Maths', 'Physics']);
   check('recentSummary 只含有记录的科目', summary.includes('Maths') && !summary.includes('Physics'));
+
+  section('UT: 表格感知追加（appendTableRow）');
+  // 表后有空行：新行仍插入表格最后一行紧后方，不脱离表格
+  const v6 = new FakeVault({ seed: { 'a.md': '# 台账\n\n| 列1 | 列2 |\n|---|---|\n| r1 | x |\n\n' } });
+  await v6.appendTableRow('a.md', '| r2 | y |');
+  const a1 = v6.files['a.md'];
+  check('表后空行：新行紧贴最后表格行', a1.includes('| r1 | x |\n| r2 | y |\n\n'));
+  // 表后有空行+补记段落：新行进表格，补记保留在下方
+  const v7 = new FakeVault({ seed: { 'b.md': '| 列1 |\n|---|\n| r1 |\n\n手动补记一行\n' } });
+  await v7.appendTableRow('b.md', '| r2 |');
+  const b1 = v7.files['b.md'];
+  check('表后补记：新行仍进表格', b1.includes('| r1 |\n| r2 |\n'));
+  check('补记内容保留且在新行之后', b1.indexOf('手动补记一行') > b1.indexOf('| r2 |'));
+  // 无表格：退化为普通 append
+  const v8 = new FakeVault({ seed: { 'c.md': '# 标题\n正文\n' } });
+  await v8.appendTableRow('c.md', '| r1 |');
+  check('无表格退化为末尾追加', v8.files['c.md'].endsWith('| r1 |\n'));
 }

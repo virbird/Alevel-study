@@ -39,7 +39,7 @@ export class PracticeFocusService {
 
   async append(subject: string, desc: string): Promise<void> {
     const row = renderRow([todayStr(), subject || '?', desc, '生效中']);
-    await this.vault.append(PRACTICE_FOCUS_PATH, row);
+    await this.vault.appendTableRow(PRACTICE_FOCUS_PATH, row);
   }
 
   async load(): Promise<PracticeFocus[]> {
@@ -80,7 +80,7 @@ export class WeakImpressionService {
 
   async append(subject: string, desc: string): Promise<void> {
     const row = renderRow([todayStr(), subject || '?', desc, '0', '待验证']);
-    await this.vault.append(WEAK_IMPRESSIONS_PATH, row);
+    await this.vault.appendTableRow(WEAK_IMPRESSIONS_PATH, row);
   }
 
   async load(): Promise<WeakImpression[]> {
@@ -113,7 +113,7 @@ export class QuestionLogService {
 
   async appendTag(tag: SessionTag): Promise<void> {
     const row = renderRow([tag.date, tag.subject, tag.topic, tag.confusion, tag.depth]);
-    await this.vault.append(QUESTION_LOG_PATH, row);
+    await this.vault.appendTableRow(QUESTION_LOG_PATH, row);
   }
 }
 

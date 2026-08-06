@@ -49,10 +49,10 @@ export class ExpressionService {
       added++;
     }
     if (rows.length) {
-      // 直接读原文件拼接：不依赖末尾换行（编辑器/同步工具可能去掉尾换行，导致行粘连解析丢失）
-      const current = (await this.vault.read(EXPR_LIB_PATH)) ?? '';
-      const sep = current === '' || current.endsWith('\n') ? '' : '\n';
-      await this.vault.write(EXPR_LIB_PATH, current + sep + rows.join('\n') + '\n');
+      // 表格感知追加：插入到现有表格最后一行紧后方，不受表后空行/补记影响
+      for (const r of rows) {
+        await this.vault.appendTableRow(EXPR_LIB_PATH, r);
+      }
     }
     return added;
   }

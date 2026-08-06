@@ -275,6 +275,33 @@ export class VaultService {
     await this.write(path, base + sep + content + suffix);
   }
 
+  /**
+   * 表格感知追加：新行插入到文件中最后一个表格行（以 | 开头）的紧后方，
+   * 不受表后空行/补记/其他小节的影响，避免新行脱离表格变成游离文本。
+   * 找不到表格行时退化为普通 append。
+   */
+  async appendTableRow(path: string, rowLine: string): Promise<void> {
+    const existing = await this.read(path);
+    if (!existing) {
+      await this.append(path, rowLine);
+      return;
+    }
+    const row = rowLine.endsWith('\n') ? rowLine.slice(0, -1) : rowLine;
+    const lines = existing.replace(/\r\n/g, '\n').split('\n');
+    let idx = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].trimStart().startsWith('|')) { idx = i; break; }
+    }
+    if (idx < 0) {
+      await this.append(path, rowLine);
+      return;
+    }
+    lines.splice(idx + 1, 0, row);
+    let out = lines.join('\n');
+    if (!out.endsWith('\n')) out += '\n';
+    await this.write(path, out);
+  }
+
   /** 检测同步冲突标记，提示用户而不是覆盖 */
   async hasConflict(path: string): Promise<boolean> {
     const content = await this.read(path);

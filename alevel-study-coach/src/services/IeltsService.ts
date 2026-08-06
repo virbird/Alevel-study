@@ -272,7 +272,7 @@ export class IeltsService {
   private async appendLedger(s: GradeResult['scores'], notePath: string): Promise<void> {
     const fmt = (v: number | null) => (v === null ? '-' : String(v));
     const row = renderRow([todayStr(), notePath, fmt(s.overall), fmt(s.tr), fmt(s.cc), fmt(s.lr), fmt(s.gra)]);
-    await this.vault.append(GRADE_LEDGER_PATH, row);
+    await this.vault.appendTableRow(GRADE_LEDGER_PATH, row); // 表格感知追加：不受表后空行影响
   }
 
   /** 教练会话中批改结果入库（来源记为「教练会话」） */

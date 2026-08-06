@@ -73,6 +73,29 @@ export class FakeVault {
     this.files[p] = existing + sep + c + suffix;
   }
 
+  /** 与生产 VaultService.appendTableRow 语义一致：插入到最后一个表格行紧后方 */
+  async appendTableRow(p: string, rowLine: string): Promise<void> {
+    const existing = this.files[p];
+    if (!existing) {
+      await this.append(p, rowLine);
+      return;
+    }
+    const row = rowLine.endsWith('\n') ? rowLine.slice(0, -1) : rowLine;
+    const lines = existing.replace(/\r\n/g, '\n').split('\n');
+    let idx = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].trimStart().startsWith('|')) { idx = i; break; }
+    }
+    if (idx < 0) {
+      await this.append(p, rowLine);
+      return;
+    }
+    lines.splice(idx + 1, 0, row);
+    let out = lines.join('\n');
+    if (!out.endsWith('\n')) out += '\n';
+    this.files[p] = out;
+  }
+
   async hasConflict(): Promise<boolean> {
     return this.conflict;
   }
