@@ -33,6 +33,16 @@ export async function run(): Promise<void> {
 
   check('无 topic 拒绝入库', (await wa.addEntry({ subject: 'Maths' })) === null);
 
+  // 逐条手工反馈：updateStatus 整行替换
+  const upd = await wa.updateStatus('W2', '已订正');
+  check('updateStatus 成功', upd === true);
+  const after = await wa.load();
+  eq('状态已更新', after.find(x => x.id === 'W2')?.status, '已订正');
+  eq('其他字段不变', after.find(x => x.id === 'W2')?.topic, 'differentiation');
+  eq('open 不再包含已订正', (await wa.open()).length, 0);
+  check('重复更新同状态返回 false', (await wa.updateStatus('W2', '已订正')) === false);
+  check('不存在的 ID 返回 false', (await wa.updateStatus('W99', '已订正')) === false);
+
   section('UT: wrongAnswer JSON 提取与展示剥离');
   const reply = '订正完成，重写一遍很好。\n```json\n{"wrongAnswer": {"subject": "Physics", "topic": "moments", "status": "已订正"}}\n```';
   const parsed = extractJson<{ wrongAnswer?: { topic: string; status: string } }>(reply);

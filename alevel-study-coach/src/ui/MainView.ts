@@ -1264,9 +1264,10 @@ export class MainView extends ItemView {
     const terms = await this.plugin.terms.load();
     const drillTerms = terms.filter(t => t.status !== '已稳定');
     const exprDue = await this.plugin.expressions.due();
+    const openWas = await this.plugin.wrongAnswers.open();
 
     el.createEl('div', {
-      text: `今日全部到期：失分点 ${due.length} · 术语待抽查 ${drillTerms.length} · 表达到期 ${exprDue.length}`,
+      text: `今日全部到期：失分点 ${due.length} · 术语待抽查 ${drillTerms.length} · 表达到期 ${exprDue.length} · 错题待跟进 ${openWas.length}`,
       cls: 'asc-hint',
     });
 
@@ -1279,6 +1280,7 @@ export class MainView extends ItemView {
         drillTerms.map(t => `- ${t.term}（${t.status}）`).join('\n') || '（无）',
         exprDue.map(x => `- ${x.expr}`).join('\n') || '（无）',
         due.map(e => `- ${e.topic}（${e.subject}）`).join('\n') || '（无）',
+        openWas.map(w => `- ${w.topic}（${w.subject}）`).join('\n') || '（无）',
       ].join('\n===\n');
       new OfflineFeedbackModal(this.app, this.plugin, ctx, (fb) => {
         this.pendingFeedback = fb;
@@ -1344,6 +1346,24 @@ export class MainView extends ItemView {
         .createEl('button', { text: '开始造句抽查', cls: 'asc-btn asc-btn-cta asc-btn-small' })
         .addEventListener('click', () => void this.plugin.startExpressionDrill());
     }
+
+    // ④ 错题跟进：未订正条目逐条手工反馈（线下重做完成即可标记）
+    el.createEl('div', { text: `④ 错题跟进（未订正 ${openWas.length}）`, cls: 'asc-section-title' });
+    if (!openWas.length) {
+      el.createDiv({ text: '没有未订正错题——解题/订正会话中卡住的题会在这里跟进。', cls: 'asc-empty' });
+    } else {
+      for (const w of openWas) {
+        const row = el.createDiv({ cls: 'asc-row' });
+        row.createSpan({ text: `${w.id}【${w.subject}】${w.topic} · ${w.myError || w.code}` });
+        const okBtn = row.createEl('button', { text: '已重做掌握', cls: 'asc-btn asc-btn-small' });
+        okBtn.setAttr('title', '线下/课上已重做并掌握，手工标记为已订正');
+        okBtn.addEventListener('click', async () => {
+          const done = await this.plugin.wrongAnswers.updateStatus(w.id, '已订正');
+          new Notice(done ? `${w.id} 已标记为已订正` : '更新失败：条目可能已变更');
+          this.render();
+        });
+      }
+    }
   }
 
   /** 线下反馈确认卡片：解析结果逐条列出，确认后应用到三队记录 */
@@ -1354,6 +1374,7 @@ export class MainView extends ItemView {
     for (const t of fb.terms) card.createEl('div', { text: `${mark(t.pass)} 术语：${t.name}`, cls: 'asc-row' });
     for (const x of fb.expressions) card.createEl('div', { text: `${mark(x.pass)} 表达：${x.name}`, cls: 'asc-row' });
     for (const p of fb.points) card.createEl('div', { text: `${mark(p.pass)} 失分点：${p.topic}`, cls: 'asc-row' });
+    for (const w of fb.wrongs) card.createEl('div', { text: `${mark(w.pass)} 错题：${w.topic}`, cls: 'asc-row' });
     const btns = card.createDiv({ cls: 'asc-row' });
     btns.createEl('button', { text: '确认应用', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.applyReviewFeedback(fb));
     btns.createEl('button', { text: '丢弃', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
@@ -1384,6 +1405,14 @@ export class MainView extends ItemView {
       } else {
         await this.plugin.errorLog.addEntry({ subject: e.subject, topic: e.topic, code: e.code });
       }
+      applied++;
+    }
+    const wrongs = await this.plugin.wrongAnswers.load();
+    for (const w of fb.wrongs) {
+      const e = wrongs.find(x => x.topic.toLowerCase() === w.topic.toLowerCase());
+      if (!e) { misses.push(`错题 ${w.topic}`); continue; }
+      if (w.pass) await this.plugin.wrongAnswers.updateStatus(e.id, '已订正');
+      // 未掌握则保持未订正，继续自动跟进
       applied++;
     }
     this.pendingFeedback = null;
@@ -1429,17 +1458,18 @@ export function thinkAnnotation(minutes: number): string {
   return `\n\n[插件注：该生刚由插件计时完成 ${minutes} 分钟独立思考，达到卡住耐受力门槛，请把试过的方向列出来再继续。]`;
 }
 
-/** 线下练习反馈：复习三队（失分点/术语/表达）的线下结果结构化 */
+/** 线下练习反馈：复习四队（失分点/术语/表达/错题）的线下结果结构化 */
 export interface ReviewFeedback {
   terms: { name: string; pass: boolean }[];
   expressions: { name: string; pass: boolean }[];
   points: { topic: string; pass: boolean }[];
+  wrongs: { topic: string; pass: boolean }[];
 }
 
 /** 从 AI 解析回复提取线下练习反馈 JSON（宽容字段名差异）；导出供测试 */
 export function parseReviewFeedback(reply: string): ReviewFeedback {
   const p = extractJson<{ reviewFeedback?: Record<string, unknown> }>(reply)?.reviewFeedback;
-  const fb: ReviewFeedback = { terms: [], expressions: [], points: [] };
+  const fb: ReviewFeedback = { terms: [], expressions: [], points: [], wrongs: [] };
   if (!p || typeof p !== 'object') return fb;
   const norm = (arr: unknown, nameKeys: string[], passOut: { name: string; pass: boolean }[] | { topic: string; pass: boolean }[], keyOut: 'name' | 'topic') => {
     if (!Array.isArray(arr)) return;
@@ -1460,6 +1490,7 @@ export function parseReviewFeedback(reply: string): ReviewFeedback {
   norm(p.terms, ['name', 'term', '术语'], fb.terms, 'name');
   norm(p.expressions, ['name', 'expr', '表达'], fb.expressions, 'name');
   norm(p.points, ['topic', 'name', '考点'], fb.points, 'topic');
+  norm(p.wrongs, ['topic', 'name', '错题'], fb.wrongs, 'topic');
   return fb;
 }
 

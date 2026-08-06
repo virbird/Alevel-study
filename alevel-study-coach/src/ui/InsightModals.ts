@@ -201,9 +201,11 @@ const REVIEW_FEEDBACK_PARSE_PROMPT = `你是学习插件的解析模块。把学
 %s
 【到期失分点】
 %s
+【未订正错题】
+%s
 
 输出格式（用 \`\`\`json 代码块包裹）：
-{"reviewFeedback": {"terms": [{"name": "术语名", "pass": true}], "expressions": [{"name": "表达", "pass": false}], "points": [{"topic": "考点", "pass": true}]}}
+{"reviewFeedback": {"terms": [{"name": "术语名", "pass": true}], "expressions": [{"name": "表达", "pass": false}], "points": [{"topic": "考点", "pass": true}], "wrongs": [{"topic": "错题考点", "pass": true}]}}
 规则：只收录学生明确提到的条目，名称尽量与队列一致；pass=true 表示掌握/通过/会了，false 表示忘了/又错/还不会；不要编造未提到的条目；学生提到但队列里没有的，用最接近的名称收录。`;
 
 export class OfflineFeedbackModal extends Modal {
@@ -229,16 +231,17 @@ export class OfflineFeedbackModal extends Modal {
         if (!this.plugin.llm.configured) return new Notice('请先在设置里配置 LLM');
         b.setButtonText('解析中…').setDisabled(true);
         try {
+          const seg = this.context.split('\n===\n');
           const reply = await this.plugin.llm.chat({
             messages: [
-              { role: 'user', content: REVIEW_FEEDBACK_PARSE_PROMPT.replace('%s', this.context.split('\n===\n')[0] ?? '').replace('%s', this.context.split('\n===\n')[1] ?? '').replace('%s', this.context.split('\n===\n')[2] ?? '') },
+              { role: 'user', content: REVIEW_FEEDBACK_PARSE_PROMPT.replace('%s', seg[0] ?? '').replace('%s', seg[1] ?? '').replace('%s', seg[2] ?? '').replace('%s', seg[3] ?? '') },
               { role: 'user', content: text },
             ],
             maxTokens: 1500,
           });
           const { parseReviewFeedback } = await import('./MainView');
           const fb = parseReviewFeedback(reply);
-          const total = fb.terms.length + fb.expressions.length + fb.points.length;
+          const total = fb.terms.length + fb.expressions.length + fb.points.length + fb.wrongs.length;
           if (!total) {
             new Notice('没有解析出可应用的反馈，请写得更具体些（提到具体的术语/表达/考点名）');
             b.setButtonText('解析并汇报').setDisabled(false);

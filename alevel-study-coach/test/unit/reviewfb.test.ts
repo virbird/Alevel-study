@@ -21,5 +21,11 @@ export async function run(): Promise<void> {
 
   // 无 JSON / 空内容不报错
   const fb3 = parseReviewFeedback('没有任何 json 的普通文本');
-  check('无 JSON 返回空结构', fb3.terms.length === 0 && fb3.expressions.length === 0 && fb3.points.length === 0);
+  check('无 JSON 返回空结构', fb3.terms.length === 0 && fb3.expressions.length === 0 && fb3.points.length === 0 && fb3.wrongs.length === 0);
+
+  // 错题队列解析
+  const reply4 = '```json\n{"reviewFeedback": {"wrongs": [{"topic": "moments", "pass": true}, {"topic": "moles", "pass": false}]}}\n```';
+  const fb4 = parseReviewFeedback(reply4);
+  eq('错题条数', fb4.wrongs.length, 2);
+  eq('错题 pass 判定', [fb4.wrongs[0].pass, fb4.wrongs[1].pass], [true, false]);
 }

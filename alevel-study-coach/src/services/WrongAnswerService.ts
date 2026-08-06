@@ -71,4 +71,17 @@ export class WrongAnswerService {
   async open(): Promise<WrongAnswerEntry[]> {
     return (await this.load()).filter(e => e.status === '未订正');
   }
+
+  /** 手工更新状态（线下重做完成等逐条反馈）：整行替换重写 */
+  async updateStatus(id: string, status: WrongAnswerStatus): Promise<boolean> {
+    const e = (await this.load()).find(x => x.id === id);
+    if (!e || e.status === status) return false;
+    const content = await this.vault.read(WRONG_ANSWER_PATH);
+    if (!content) return false;
+    const oldRow = renderRow([e.id, e.date, e.subject, e.topic, e.myError, e.code, e.answerSource, e.status]);
+    const newRow = renderRow([e.id, e.date, e.subject, e.topic, e.myError, e.code, e.answerSource, status]);
+    if (!content.includes(oldRow)) return false;
+    await this.vault.write(WRONG_ANSWER_PATH, content.replace(oldRow, newRow));
+    return true;
+  }
 }
