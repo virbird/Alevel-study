@@ -56,6 +56,8 @@ export class MainView extends ItemView {
   private compressing = false;
   /** 线下练习反馈待确认结果（复习页签确认卡片） */
   private pendingFeedback: ReviewFeedback | null = null;
+  /** 复习队列卡片展开状态（默认：有内容的队展开，空队收起） */
+  private reviewExpanded: Record<string, boolean> = {};
   /** 按科目隔离的会话槽：切科目时保存当前会话，切回时恢复 */
   private slots: Partial<Record<string, { sessionId: string; messages: ChatMessage[]; savedCount: number; sessionTagged: boolean }>> = {};
   /** 独立思考计时器（提示词门槛的产品硬约束，仅会话内可用） */
@@ -1257,23 +1259,22 @@ export class MainView extends ItemView {
   }
 
   // ─── 复习 ────────────────────────────────────────────────
+
   private async renderReview(): Promise<void> {
     const el = this.bodyEl;
     const due = await this.plugin.errorLog.dueEntries();
-    // 今日全部到期：失分点 + 术语（无排期，以未稳定/观察中为待抽查）+ 表达（SM-2 到期）
     const terms = await this.plugin.terms.load();
     const drillTerms = terms.filter(t => t.status !== '已稳定');
     const exprDue = await this.plugin.expressions.due();
     const openWas = await this.plugin.wrongAnswers.open();
 
-    el.createEl('div', {
-      text: `今日全部到期：失分点 ${due.length} · 术语待抽查 ${drillTerms.length} · 表达到期 ${exprDue.length} · 错题待跟进 ${openWas.length}`,
-      cls: 'asc-hint',
+    // 顶栏：汇总 + 线下汇报入口
+    const topRow = el.createDiv({ cls: 'asc-row' });
+    topRow.createSpan({
+      text: `今日全部到期：失分点 ${due.length} · 术语 ${drillTerms.length} · 表达 ${exprDue.length} · 错题 ${openWas.length}`,
+      cls: 'asc-muted',
     });
-
-    // 线下练习反馈入口：复习可在插件外自己练，结果报回来同样更新记录
-    const fbRow = el.createDiv({ cls: 'asc-row' });
-    const fbBtn = fbRow.createEl('button', { text: '📝 汇报线下练习结果', cls: 'asc-btn asc-btn-small' });
+    const fbBtn = topRow.createEl('button', { text: '📝 汇报线下练习结果', cls: 'asc-btn asc-btn-small' });
     fbBtn.setAttr('title', '线下自己练了术语/表达/错题？把结果报回来，同样更新记录');
     fbBtn.addEventListener('click', () => {
       const ctx = [
@@ -1291,71 +1292,96 @@ export class MainView extends ItemView {
     // 待确认的线下反馈卡片
     if (this.pendingFeedback) this.renderFeedbackCard(el, this.pendingFeedback);
 
+    // 队列卡片工厂：标题行（▸/▾ 折叠 + 标题 + 计数徽标 + 操作按钮）+ 可折叠主体；
+    // 默认有内容的队展开、空队收起，可手动切换
+    const queue = (key: string, title: string, badge: string, hot: boolean, headerActions?: (h: HTMLElement) => void): HTMLElement | null => {
+      const expanded = this.reviewExpanded[key] ?? hot;
+      const card = el.createDiv({ cls: 'asc-card asc-queue-card' });
+      const head = card.createDiv({ cls: 'asc-queue-head' });
+      const tg = head.createEl('button', { text: expanded ? '▾' : '▸', cls: 'asc-btn asc-btn-icon asc-fold-btn' });
+      tg.setAttr('title', expanded ? '收起细节' : '展开细节');
+      tg.addEventListener('click', () => { this.reviewExpanded[key] = !expanded; this.render(); });
+      head.createSpan({ text: title, cls: 'asc-queue-title' });
+      head.createSpan({ text: badge, cls: 'asc-queue-badge' + (hot ? ' asc-badge-hot' : '') });
+      if (headerActions) headerActions(head);
+      if (!expanded) return null;
+      return card.createDiv({ cls: 'asc-queue-body' });
+    };
+
     // ① 失分点复查：不重做原题，让 AI 出同考点、同陷阱的变式题
-    el.createEl('div', { text: `① 失分点复查（${due.length}）`, cls: 'asc-section-title' });
-    if (!due.length) {
-      el.createDiv({ text: '没有到期失分点。待复查队列到期时这里会出现。', cls: 'asc-empty' });
-    }
-    for (const e of due) {
-      const card = el.createDiv({ cls: 'asc-card asc-review-card' });
-      card.createEl('div', { text: `#${e.id} 【${e.subject}】${e.topic} · ${e.code} · 复发 ${e.recurrence}`, cls: 'asc-card-title' });
-      card.createEl('div', { text: e.desc, cls: 'asc-row' });
-      if (e.fix) card.createEl('div', { text: `正确做法：${e.fix}`, cls: 'asc-row asc-muted' });
-      const btns = card.createDiv({ cls: 'asc-row' });
-      btns.createEl('button', { text: '出变式题', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => this.startVariantDrill(e));
-      btns.createEl('button', { text: '复查通过', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
-        // 状态流转：未消除 → 观察中（复查一次通过）→ 已消除（连续两次）
-        const next = e.status === '未消除' ? '观察中' : '已消除';
-        await this.plugin.errorLog.updateEntry(e.id, { status: next, reviewDate: addDays(todayStr(), 7) });
-        new Notice(next === '已消除' ? `#${e.id} 已连续两次通过，标记为已消除` : `#${e.id} 通过一次，状态改为观察中`);
-        void this.plugin.refreshStatusBar();
-        this.render();
-      });
-      btns.createEl('button', { text: '再犯', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
-        await this.plugin.errorLog.addEntry({ subject: e.subject, topic: e.topic, code: e.code });
-        new Notice(`#${e.id} 复发 +1，复查日期顺延 3 天`);
-        void this.plugin.refreshStatusBar();
-        this.render();
-      });
+    const b1 = queue('points', '① 失分点复查', `${due.length} 条到期`, due.length > 0);
+    if (b1) {
+      if (!due.length) {
+        b1.createDiv({ text: '没有到期失分点。待复查队列到期时这里会出现。', cls: 'asc-empty' });
+      }
+      for (const e of due) {
+        const item = b1.createDiv({ cls: 'asc-queue-item' });
+        item.createEl('div', { text: `#${e.id} 【${e.subject}】${e.topic} · ${e.code} · 复发 ${e.recurrence}`, cls: 'asc-card-title' });
+        item.createEl('div', { text: e.desc, cls: 'asc-row' });
+        if (e.fix) item.createEl('div', { text: `正确做法：${e.fix}`, cls: 'asc-row asc-muted' });
+        const btns = item.createDiv({ cls: 'asc-row' });
+        btns.createEl('button', { text: '出变式题', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => this.startVariantDrill(e));
+        btns.createEl('button', { text: '复查通过', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
+          const next = e.status === '未消除' ? '观察中' : '已消除';
+          await this.plugin.errorLog.updateEntry(e.id, { status: next, reviewDate: addDays(todayStr(), 7) });
+          new Notice(next === '已消除' ? `#${e.id} 已连续两次通过，标记为已消除` : `#${e.id} 通过一次，状态改为观察中`);
+          void this.plugin.refreshStatusBar();
+          this.render();
+        });
+        btns.createEl('button', { text: '再犯', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
+          await this.plugin.errorLog.addEntry({ subject: e.subject, topic: e.topic, code: e.code });
+          new Notice(`#${e.id} 复发 +1，复查日期顺延 3 天`);
+          void this.plugin.refreshStatusBar();
+          this.render();
+        });
+      }
     }
 
     // ② 术语抽查：未稳定/观察中全抽 + 已稳定随机回抽一条（防假性掌握）
-    el.createEl('div', { text: `② 术语抽查（待抽查 ${drillTerms.length}）`, cls: 'asc-section-title' });
-    if (!drillTerms.length) {
-      el.createDiv({ text: '术语清单里没有待抽查条目（学习/结题会自动积累）。', cls: 'asc-empty' });
-    } else {
-      for (const t of drillTerms.slice(0, 5)) {
-        el.createDiv({ text: `- ${t.term}（${t.subject} · ${t.status}）`, cls: 'asc-row asc-muted' });
+    const b2 = queue('terms', '② 术语抽查', `待抽查 ${drillTerms.length}`, drillTerms.length > 0, h => {
+      if (drillTerms.length) {
+        h.createEl('button', { text: '开始抽查', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.startDrill());
       }
-      if (drillTerms.length > 5) el.createDiv({ text: `… 还有 ${drillTerms.length - 5} 条`, cls: 'asc-muted' });
-      el.createDiv({ cls: 'asc-row' })
-        .createEl('button', { text: '开始术语抽查（30 秒盲写）', cls: 'asc-btn asc-btn-cta asc-btn-small' })
-        .addEventListener('click', () => void this.startDrill());
+    });
+    if (b2) {
+      if (!drillTerms.length) {
+        b2.createDiv({ text: '术语清单里没有待抽查条目（学习/结题会自动积累）。', cls: 'asc-empty' });
+      } else {
+        for (const t of drillTerms) {
+          b2.createDiv({ text: `- ${t.term}（${t.subject} · ${t.status}）`, cls: 'asc-row asc-muted' });
+        }
+        b2.createDiv({ text: '点「开始抽查」：30 秒盲写，含已稳定随机回抽一条。', cls: 'asc-empty' });
+      }
     }
 
     // ③ 表达造句抽查：SM-2 到期的表达逐条造句，AI 判定升档/重置
-    el.createEl('div', { text: `③ 表达造句抽查（到期 ${exprDue.length}）`, cls: 'asc-section-title' });
-    if (!exprDue.length) {
-      el.createDiv({ text: '没有到期表达——批改作文会自动积累，到期后这里提示。', cls: 'asc-empty' });
-    } else {
-      for (const x of exprDue.slice(0, 5)) {
-        el.createDiv({ text: `- ${x.expr}（${x.type}）`, cls: 'asc-row asc-muted' });
+    const b3 = queue('exprs', '③ 表达造句抽查', `到期 ${exprDue.length}`, exprDue.length > 0, h => {
+      if (exprDue.length) {
+        h.createEl('button', { text: '开始造句抽查', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.plugin.startExpressionDrill());
       }
-      if (exprDue.length > 5) el.createDiv({ text: `… 还有 ${exprDue.length - 5} 条`, cls: 'asc-muted' });
-      el.createDiv({ cls: 'asc-row' })
-        .createEl('button', { text: '开始造句抽查', cls: 'asc-btn asc-btn-cta asc-btn-small' })
-        .addEventListener('click', () => void this.plugin.startExpressionDrill());
+    });
+    if (b3) {
+      if (!exprDue.length) {
+        b3.createDiv({ text: '没有到期表达——批改作文会自动积累，到期后这里提示。', cls: 'asc-empty' });
+      } else {
+        for (const x of exprDue) {
+          b3.createDiv({ text: `- ${x.expr}（${x.type}）`, cls: 'asc-row asc-muted' });
+        }
+      }
     }
 
     // ④ 错题跟进：未订正条目逐条手工反馈（线下重做完成即可标记）
-    el.createEl('div', { text: `④ 错题跟进（未订正 ${openWas.length}）`, cls: 'asc-section-title' });
-    if (!openWas.length) {
-      el.createDiv({ text: '没有未订正错题——解题/订正会话中卡住的题会在这里跟进。', cls: 'asc-empty' });
-    } else {
+    const b4 = queue('wrongs', '④ 错题跟进', `未订正 ${openWas.length}`, openWas.length > 0);
+    if (b4) {
+      if (!openWas.length) {
+        b4.createDiv({ text: '没有未订正错题——解题/订正会话中卡住的题会在这里跟进。', cls: 'asc-empty' });
+      }
       for (const w of openWas) {
-        const row = el.createDiv({ cls: 'asc-row' });
-        row.createSpan({ text: `${w.id}【${w.subject}】${w.topic} · ${w.myError || w.code}` });
-        const okBtn = row.createEl('button', { text: '已重做掌握', cls: 'asc-btn asc-btn-small' });
+        const item = b4.createDiv({ cls: 'asc-queue-item' });
+        item.createEl('div', { text: `${w.id}【${w.subject}】${w.topic}`, cls: 'asc-card-title' });
+        item.createEl('div', { text: `我的错误：${w.myError || '-'} · 答案基线：${w.answerSource}`, cls: 'asc-row asc-muted' });
+        const btns = item.createDiv({ cls: 'asc-row' });
+        const okBtn = btns.createEl('button', { text: '已重做掌握', cls: 'asc-btn asc-btn-small' });
         okBtn.setAttr('title', '线下/课上已重做并掌握，手工标记为已订正');
         okBtn.addEventListener('click', async () => {
           const done = await this.plugin.wrongAnswers.updateStatus(w.id, '已订正');

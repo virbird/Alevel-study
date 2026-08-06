@@ -555,6 +555,54 @@
   font-weight: 600;
 }
 
+/* 复习队列卡片：标题行（折叠+徽标+操作）与可折叠主体，强化分区 */
+.asc-queue-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.asc-queue-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--background-secondary);
+}
+
+.asc-queue-title {
+  font-weight: 600;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.asc-queue-badge {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.asc-badge-hot {
+  color: var(--text-warning);
+  font-weight: 600;
+}
+
+.asc-fold-btn {
+  padding: 2px 8px;
+  min-width: 28px;
+}
+
+.asc-queue-body {
+  padding: 6px 10px 10px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.asc-queue-item {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-top: 6px;
+}
+
 /* 首页紧凑化：待复查卡片、动作行、卡片间距 */
 .asc-due-card {
   border-left: 3px solid var(--text-warning);
