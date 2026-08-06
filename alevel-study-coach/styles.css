@@ -464,6 +464,18 @@
   line-height: 1;
 }
 
+/* 输入栏内图片图标（IM 风格）与待发送图片条 */
+.asc-input-bar .asc-btn-icon {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.asc-img-chips {
+  margin-bottom: 2px;
+}
+
 /* 设置页模型管理列表 */
 .asc-model-list {
   margin: 8px 0;

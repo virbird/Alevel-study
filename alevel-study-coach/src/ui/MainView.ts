@@ -368,12 +368,6 @@ export class MainView extends ItemView {
     textBtn('存档', '把当前会话存档到笔记', () => void this.archiveIfNeeded(true));
     textBtn('历史', '加载历史会话继续聊', () => this.openHistory());
     textBtn('文档', '引用文档（全会话上下文）', () => this.openAttachPicker());
-    textBtn('图片', '附加图片（随下一条消息）', () =>
-      new ImagePickerModal(this.app, this.pendingImages, f => {
-        this.pendingImages.push(f.path);
-        this.render();
-      }).open(),
-    );
     textBtn('计时', this.systemPrompt ? '独立思考计时（到时间才允许求助）' : '独立思考计时（先开会话）', () => void this.startTimer());
 
     if (this.timerDeadline > Date.now()) {
@@ -406,18 +400,6 @@ export class MainView extends ItemView {
       }
     }
 
-    if (this.pendingImages.length) {
-      const chips = el.createDiv({ cls: 'asc-chips' });
-      for (const p of this.pendingImages) {
-        const name = p.split('/').pop() ?? p;
-        const chip = chips.createSpan({ cls: 'asc-chip', text: `🖼 ${name}（随下条消息发送）` });
-        chip.createSpan({ text: ' ✕', cls: 'asc-chip-x' }).addEventListener('click', () => {
-          this.pendingImages = this.pendingImages.filter(x => x !== p);
-          this.render();
-        });
-      }
-    }
-
     if (this.sessionSummary) {
       el.createDiv({ text: `已注入：${this.sessionSummary}`, cls: 'asc-summary' });
     }
@@ -438,7 +420,29 @@ export class MainView extends ItemView {
     }
     chatEl.scrollTop = chatEl.scrollHeight;
 
+    // 待发送图片条（IM 风格：紧贴输入框上方）
+    if (this.pendingImages.length) {
+      const chips = el.createDiv({ cls: 'asc-chips asc-img-chips' });
+      for (const p of this.pendingImages) {
+        const name = p.split('/').pop() ?? p;
+        const chip = chips.createSpan({ cls: 'asc-chip', text: `🖼 ${name}` });
+        chip.createSpan({ text: ' ✕', cls: 'asc-chip-x' }).addEventListener('click', () => {
+          this.pendingImages = this.pendingImages.filter(x => x !== p);
+          this.render();
+        });
+      }
+    }
+
     const inputBar = el.createDiv({ cls: 'asc-input-bar' });
+    // IM 风格：输入框内左侧图片图标，附加图片随下一条消息发送
+    const imgBtn = inputBar.createEl('button', { text: '🖼', cls: 'asc-btn asc-btn-icon' });
+    imgBtn.setAttr('title', '附加图片（随下一条消息发送，可多选）');
+    imgBtn.addEventListener('click', () =>
+      new ImagePickerModal(this.app, this.pendingImages, f => {
+        this.pendingImages.push(f.path);
+        this.render();
+      }).open(),
+    );
     const input = inputBar.createEl('textarea', { attr: { rows: '2', placeholder: this.systemPrompt ? '把题目原文发过来……' : '先点「新会话」开始' } });
     const sendBtn = inputBar.createEl('button', { text: this.busy ? '回复中…' : '发送', cls: 'asc-btn asc-btn-cta' });
     sendBtn.disabled = this.busy || !this.systemPrompt || this.timerDeadline > Date.now();
