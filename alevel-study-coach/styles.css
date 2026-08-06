@@ -549,6 +549,12 @@
   color: var(--text-error);
 }
 
+/* 超限强制压缩按钮：红色强调 */
+.asc-ctx-row .asc-btn-danger {
+  border-color: var(--text-error);
+  font-weight: 600;
+}
+
 /* 首页紧凑化：待复查卡片、动作行、卡片间距 */
 .asc-due-card {
   border-left: 3px solid var(--text-warning);

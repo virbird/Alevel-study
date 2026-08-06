@@ -35,6 +35,8 @@ export interface CoachPluginSettings {
   lastCoachMode: string;
   /** 上下文窗口大小（token，用于展示与自动压缩阈值） */
   contextWindow: number;
+  /** 自动压缩阈值（百分比，用量达到即发送前自动压缩，默认 80） */
+  compressThreshold: number;
 }
 
 /** 批改任务状态：后台运行，雅思页签内展示进度与结果，不阻塞其他操作 */
@@ -56,6 +58,7 @@ const DEFAULT_SETTINGS: CoachPluginSettings = {
   modelDefaults: { 'openai-compat': '', anthropic: '' },
   lastCoachMode: 'drill',
   contextWindow: 128000,
+  compressThreshold: 80,
 };
 
 export default class ALevelStudyCoachPlugin extends Plugin {

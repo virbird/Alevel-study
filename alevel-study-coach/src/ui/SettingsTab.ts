@@ -146,6 +146,19 @@ export class StudyCoachSettingTab extends PluginSettingTab {
         }),
       );
 
+    new Setting(containerEl)
+      .setName('自动压缩阈值')
+      .setDesc('上下文用量达到该百分比时，发送前自动压缩（默认 80，可设 10–95；超限会红色提示并可强制压缩）')
+      .addText(t =>
+        t.setValue(String(this.plugin.settings.compressThreshold)).onChange(async v => {
+          const n = Number(v);
+          if (n >= 10 && n <= 95) {
+            this.plugin.settings.compressThreshold = n;
+            await this.plugin.saveSettings();
+          }
+        }),
+      );
+
     new Setting(containerEl).setName('测试连接').addButton(b =>
       b.setButtonText('测试').onClick(async () => {
         b.setButtonText('测试中…').setDisabled(true);

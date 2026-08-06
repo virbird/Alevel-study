@@ -51,6 +51,8 @@ export class MainView extends ItemView {
   private pendingClose = false;
   /** 自动开会话防重入标志 */
   private startingSession = false;
+  /** 上下文压缩进行中（耗时操作，需明确提示） */
+  private compressing = false;
   /** 按科目隔离的会话槽：切科目时保存当前会话，切回时恢复 */
   private slots: Partial<Record<string, { sessionId: string; messages: ChatMessage[]; savedCount: number; sessionTagged: boolean }>> = {};
   /** 独立思考计时器（提示词门槛的产品硬约束，仅会话内可用） */
@@ -472,17 +474,24 @@ export class MainView extends ItemView {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); doSend(); }
     });
 
-    // 上下文指示：发送框下方（符合聊天应用习惯；发送前超 80% 自动压缩，也可手动）
+    // 上下文指示（Qoder 风格：用量/百分比 + 阈值超限变红提示强制压缩）
     const ctxRow = el.createDiv({ cls: 'asc-ctx-row' });
     const ctx = this.contextTokens();
     const win = this.plugin.settings.contextWindow;
+    const limit = this.compressLimit();
+    const over = ctx > limit;
+    const pct = win > 0 ? Math.round((ctx / win) * 100) : 0;
     const ctxEl = ctxRow.createSpan({
-      text: `上下文 ≈${formatTokens(ctx)}/${formatTokens(win)}${ctx > win * 0.8 ? ' ⚠' : ''}`,
-      cls: 'asc-ctx' + (ctx > win * 0.8 ? ' asc-ctx-warn' : ''),
+      text: `已用上下文 ${formatTokens(ctx)} / ${formatTokens(win)}（${pct}%）${over ? ' ⚠ 已超压缩阈值' : ''}`,
+      cls: 'asc-ctx' + (over ? ' asc-ctx-warn' : ''),
     });
-    ctxEl.setAttr('title', '当前会话的估算上下文；发送前超过 80% 会自动压缩');
-    const compressBtn = ctxRow.createEl('button', { text: '压缩', cls: 'asc-btn asc-btn-small' });
-    compressBtn.setAttr('title', '把较早对话压缩为摘要，保留最近几轮');
+    ctxEl.setAttr('title', `超过 ${this.plugin.settings.compressThreshold}% 阈值（≈${formatTokens(limit)}）时发送前自动压缩，可在设置中调节`);
+    const compressBtn = ctxRow.createEl('button', {
+      text: this.compressing ? '压缩中…' : over ? '强制压缩' : '压缩',
+      cls: 'asc-btn asc-btn-small' + (over ? ' asc-btn-danger' : ''),
+    });
+    compressBtn.disabled = this.compressing;
+    compressBtn.setAttr('title', this.compressing ? '正在压缩，请稍候' : '把较早对话压缩为摘要，保留最近几轮（需几秒）');
     compressBtn.addEventListener('click', () => void this.compressContext(true));
   }
 
@@ -521,29 +530,35 @@ export class MainView extends ItemView {
     return t;
   }
 
-  /** 上下文压缩：manual=false 时仅在超过 80% 窗口时自动执行 */
+  /** 自动压缩阈值对应的 token 数（按设置百分比） */
+  private compressLimit(): number {
+    return this.plugin.settings.contextWindow * (this.plugin.settings.compressThreshold / 100);
+  }
+
   private async compressContext(manual: boolean): Promise<void> {
-    if (this.busy) return;
+    if (this.busy || this.compressing) return;
     if (!ContextCompressor.shouldCompress(this.messages)) {
       if (manual) new Notice('对话还短，不需要压缩');
       return;
     }
-    const win = this.plugin.settings.contextWindow;
-    if (!manual && this.contextTokens() <= win * 0.8) return;
+    if (!manual && this.contextTokens() <= this.compressLimit()) return;
     if (!this.plugin.llm.configured) {
       new Notice('请先在设置里配置 LLM');
       return;
     }
+    this.compressing = true;
     this.busy = true;
     this.render();
+    new Notice(manual ? '正在压缩上下文（总结较早对话，需几秒，请稍候）…' : '上下文已超过阈值，正在自动压缩（需几秒，请稍候）…', 6000);
     try {
       const before = this.contextTokens();
       const r = await ContextCompressor.compress(this.messages, this.plugin.llm);
       this.messages = r.messages;
-      new Notice(`上下文已压缩：≈${formatTokens(before)} → ≈${formatTokens(this.contextTokens())} token`);
+      new Notice(`✓ 上下文已压缩：≈${formatTokens(before)} → ≈${formatTokens(this.contextTokens())} token`);
     } catch (e) {
       new Notice(`压缩失败：${e instanceof Error ? e.message : String(e)}`, 8000);
     } finally {
+      this.compressing = false;
       this.busy = false;
       this.render();
     }
