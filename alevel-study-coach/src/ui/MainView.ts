@@ -63,6 +63,14 @@ export class MainView extends ItemView {
   private timerInterval: number | null = null;
   /** 批改任务卡片秒数刷新定时器 */
   private taskTicker: number | null = null;
+  /** 图片分段识别任务（>4 张自动分段，逐段识别后合并为文本发送） */
+  private imgRecTask: {
+    batches: { parts: ImagePart[]; status: 'pending' | 'running' | 'done' | 'failed'; result?: string; error?: string }[];
+    msgText: string;
+    status: 'running' | 'failed' | 'canceled';
+    startedAt: number;
+  } | null = null;
+  private imgRecTicker: number | null = null;
 
   constructor(leaf: WorkspaceLeaf, private plugin: ALevelStudyCoachPlugin) {
     super(leaf);
@@ -109,6 +117,7 @@ export class MainView extends ItemView {
       window.clearInterval(this.taskTicker);
       this.taskTicker = null;
     }
+    this.stopImgRecTicker();
     this.containerEl.empty();
   }
 
@@ -352,6 +361,9 @@ export class MainView extends ItemView {
         if (!ok) select.value = this.mode; // 切换被拒（回复中）：下拉回退
       });
     });
+
+    // 图片识别进度卡片（有才显示，后台任务不阻塞操作）
+    this.renderImgRecTask(el);
 
     // 当前科目无未结束会话 → 自动新开会话（无需点按钮；无交互则不会被记录）
     if (!this.systemPrompt && !this.startingSession) {
@@ -658,7 +670,25 @@ export class MainView extends ItemView {
       // 图片加载失败不阻塞文本发送
     }
 
-    this.messages.push({ role: 'user', content: msgText, images: images.length ? images.slice(0, 4) : undefined });
+    // 超过单次上限（4 张）：自动分段识别，逐段进度可见，失败可从中断处重试
+    if (images.length > 4) {
+      const batches = [] as { parts: ImagePart[]; status: 'pending' | 'running' | 'done' | 'failed'; result?: string; error?: string }[];
+      for (let i = 0; i < images.length; i += 4) {
+        batches.push({ parts: images.slice(i, i + 4), status: 'pending' });
+      }
+      this.imgRecTask = { batches, msgText, status: 'running', startedAt: Date.now() };
+      this.busy = true;
+      this.render();
+      void this.runImgRec();
+      return;
+    }
+
+    await this.doSendCore(msgText, images.slice(0, 4));
+  }
+
+  /** 实际发送（流式回复、结题钩子、副作用处理） */
+  private async doSendCore(msgText: string, images: ImagePart[]): Promise<void> {
+    this.messages.push({ role: 'user', content: msgText, images: images.length ? images : undefined });
     this.busy = true;
     this.render();
 
@@ -731,6 +761,101 @@ export class MainView extends ItemView {
       window.clearInterval(waitTicker);
       this.busy = false;
       this.render();
+    }
+  }
+
+  // ─── 图片分段识别（>4 张自动分段，进度卡片 + 断点重试）────────────
+
+  /** 从首个 pending 批次开始识别；全部完成后把识别结果并入原消息发送 */
+  private async runImgRec(): Promise<void> {
+    const task = this.imgRecTask;
+    if (!task) return;
+    task.status = 'running';
+    if (this.imgRecTicker === null) {
+      this.imgRecTicker = window.setInterval(() => this.render(), 1000);
+    }
+    this.render();
+    for (const b of task.batches) {
+      if (b.status === 'done') continue;
+      b.status = 'running';
+      this.render();
+      try {
+        b.result = await this.recognizeBatch(b.parts);
+        b.status = 'done';
+        this.render();
+      } catch (e) {
+        b.status = 'failed';
+        b.error = e instanceof Error && e.message === 'aborted' ? '超时（单段上限 120 秒）' : (e instanceof Error ? e.message : String(e));
+        task.status = 'failed';
+        this.stopImgRecTicker();
+        this.busy = false;
+        this.render();
+        new Notice('图片识别失败：可在进度卡片上从中断处重试', 6000);
+        return;
+      }
+    }
+    // 全部完成：识别结果并入原消息，以纯文本发送（内容已进会话记录）
+    this.stopImgRecTicker();
+    this.imgRecTask = null;
+    const blocks = task.batches
+      .map((b, i) => `【图片识别 ${i + 1}：${b.parts.map(p => p.name).join('、')}】\n${b.result ?? ''}`)
+      .join('\n\n');
+    await this.doSendCore(`${task.msgText}\n\n（以下 ${task.batches.length} 段为附件图片的自动识别转录）\n${blocks}`, []);
+  }
+
+  /** 单批识别请求（≤4 张），120 秒超时 */
+  private async recognizeBatch(parts: ImagePart[]): Promise<string> {
+    const ac = new AbortController();
+    const timer = window.setTimeout(() => ac.abort(), 120000);
+    try {
+      return await this.plugin.llm.chat({
+        messages: [{ role: 'user', content: '请完整转录这些图片里的文字内容（题目、板书、图表数据等）；数学公式用 LaTeX；没有文字就简述图片内容。只输出转录，不要解题。', images: parts }],
+        maxTokens: 2000,
+        signal: ac.signal,
+      });
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  private stopImgRecTicker(): void {
+    if (this.imgRecTicker !== null) {
+      window.clearInterval(this.imgRecTicker);
+      this.imgRecTicker = null;
+    }
+  }
+
+  /** 图片识别进度卡片：正常等待有秒数，失败可从断点重试 */
+  private renderImgRecTask(el: HTMLElement): void {
+    const task = this.imgRecTask;
+    if (!task) return;
+    const card = el.createDiv({ cls: 'asc-card asc-grading-card' });
+    const secs = Math.round((Date.now() - task.startedAt) / 1000);
+    const done = task.batches.filter(b => b.status === 'done').length;
+    card.createEl('div', {
+      text: `🖼 图片识别：第 ${Math.min(done + 1, task.batches.length)}/${task.batches.length} 段 · 已用时 ${secs} 秒${task.status === 'failed' ? ' · 已中断' : ''}`,
+      cls: 'asc-card-title',
+    });
+    task.batches.forEach((b, i) => {
+      const label = `第 ${i + 1} 段（${b.parts.length} 张：${b.parts.map(p => p.name).join('、')}）`;
+      if (b.status === 'done') card.createEl('div', { text: `✓ ${label}：识别完成（${(b.result ?? '').length} 字）`, cls: 'asc-row' });
+      else if (b.status === 'running') card.createEl('div', { text: `⏳ ${label}：识别中…（单段超时上限 120 秒，属正常等待）`, cls: 'asc-row' });
+      else if (b.status === 'failed') card.createEl('div', { text: `❌ ${label}：${b.error ?? '失败'}`, cls: 'asc-row asc-ctx-warn' });
+      else card.createEl('div', { text: `… ${label}：待处理`, cls: 'asc-row asc-muted' });
+    });
+    const btns = card.createDiv({ cls: 'asc-row' });
+    if (task.status === 'failed') {
+      btns.createEl('button', { text: '从中断处重试', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => {
+        this.busy = true;
+        void this.runImgRec();
+      });
+      btns.createEl('button', { text: '取消识别', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+        this.stopImgRecTicker();
+        this.imgRecTask = null;
+        this.busy = false;
+        new Notice('已取消图片识别，原消息未发送');
+        this.render();
+      });
     }
   }
 

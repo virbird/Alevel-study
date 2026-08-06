@@ -19,7 +19,7 @@ tech base simplified-forked from AI Study Buddy.
 | Auto session start | A session opens instantly when you enter a subject — no button needed; sessions with no user input are never recorded |
 | Opening mode menu | The opening is rendered locally from the prompt's ` ```opening ` fence (zero API call): Concept Drill A–E / Economics A–D / IELTS A–D. Reply with a letter to pick a mode, jump anytime, or let the AI guide by context |
 | Conclude flow | Conclude = self-review, scrutiny, error-log rows, session tagging; then auto-archive and auto-reopen a fresh session |
-| Session extras | SSE streaming output, image attachments (vision models, max 4 / 5 MB), session-wide doc references, resume from history |
+| Session extras | SSE streaming output, image attachments (vision models; more than 4 images are auto-batched for recognition with per-batch progress and resume-on-failure, transcripts merged into the session record), session-wide doc references, resume from history |
 | Think-first timer | In-session countdown; sending is blocked before the threshold; finishing adds a "thinking credit" note to the next message |
 
 ### Context & Models
