@@ -9,7 +9,7 @@ import { ROOT } from '../services/VaultService';
 import { OnboardModal } from './OnboardModal';
 import { CaptureModal } from './CaptureModal';
 import { SessionHistoryModal, AttachPickerModal, ImagePickerModal } from './PickerModals';
-import { SuggestionModal, DrillModal } from './InsightModals';
+import { SuggestionModal, DrillModal, OfflineFeedbackModal } from './InsightModals';
 import { EXPR_LIB_PATH, GRADE_LEDGER_PATH, parseIeltsResult } from '../services/IeltsService';
 import { WRONG_ANSWER_PATH } from '../services/WrongAnswerService';
 import { oxbridgeGuidance } from '../services/ReportService';
@@ -54,6 +54,8 @@ export class MainView extends ItemView {
   private startingSession = false;
   /** 上下文压缩进行中（耗时操作，需明确提示） */
   private compressing = false;
+  /** 线下练习反馈待确认结果（复习页签确认卡片） */
+  private pendingFeedback: ReviewFeedback | null = null;
   /** 按科目隔离的会话槽：切科目时保存当前会话，切回时恢复 */
   private slots: Partial<Record<string, { sessionId: string; messages: ChatMessage[]; savedCount: number; sessionTagged: boolean }>> = {};
   /** 独立思考计时器（提示词门槛的产品硬约束，仅会话内可用） */
@@ -1268,6 +1270,25 @@ export class MainView extends ItemView {
       cls: 'asc-hint',
     });
 
+    // 线下练习反馈入口：复习可在插件外自己练，结果报回来同样更新记录
+    const fbRow = el.createDiv({ cls: 'asc-row' });
+    const fbBtn = fbRow.createEl('button', { text: '📝 汇报线下练习结果', cls: 'asc-btn asc-btn-small' });
+    fbBtn.setAttr('title', '线下自己练了术语/表达/错题？把结果报回来，同样更新记录');
+    fbBtn.addEventListener('click', () => {
+      const ctx = [
+        drillTerms.map(t => `- ${t.term}（${t.status}）`).join('\n') || '（无）',
+        exprDue.map(x => `- ${x.expr}`).join('\n') || '（无）',
+        due.map(e => `- ${e.topic}（${e.subject}）`).join('\n') || '（无）',
+      ].join('\n===\n');
+      new OfflineFeedbackModal(this.app, this.plugin, ctx, (fb) => {
+        this.pendingFeedback = fb;
+        this.render();
+      }).open();
+    });
+
+    // 待确认的线下反馈卡片
+    if (this.pendingFeedback) this.renderFeedbackCard(el, this.pendingFeedback);
+
     // ① 失分点复查：不重做原题，让 AI 出同考点、同陷阱的变式题
     el.createEl('div', { text: `① 失分点复查（${due.length}）`, cls: 'asc-section-title' });
     if (!due.length) {
@@ -1325,6 +1346,52 @@ export class MainView extends ItemView {
     }
   }
 
+  /** 线下反馈确认卡片：解析结果逐条列出，确认后应用到三队记录 */
+  private renderFeedbackCard(el: HTMLElement, fb: ReviewFeedback): void {
+    const card = el.createDiv({ cls: 'asc-card' });
+    card.createEl('div', { text: '线下练习反馈（确认后应用）', cls: 'asc-card-title' });
+    const mark = (p: boolean) => (p ? '✓' : '✗');
+    for (const t of fb.terms) card.createEl('div', { text: `${mark(t.pass)} 术语：${t.name}`, cls: 'asc-row' });
+    for (const x of fb.expressions) card.createEl('div', { text: `${mark(x.pass)} 表达：${x.name}`, cls: 'asc-row' });
+    for (const p of fb.points) card.createEl('div', { text: `${mark(p.pass)} 失分点：${p.topic}`, cls: 'asc-row' });
+    const btns = card.createDiv({ cls: 'asc-row' });
+    btns.createEl('button', { text: '确认应用', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.applyReviewFeedback(fb));
+    btns.createEl('button', { text: '丢弃', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+      this.pendingFeedback = null;
+      this.render();
+    });
+  }
+
+  /** 应用线下反馈：术语/表达走抽查结果同一条状态机；失分点走复查通过/再犯同一逻辑 */
+  private async applyReviewFeedback(fb: ReviewFeedback): Promise<void> {
+    let applied = 0;
+    const misses: string[] = [];
+    for (const t of fb.terms) {
+      const r = await this.plugin.terms.applyDrillResult(t.name, t.pass);
+      if (r) applied++; else misses.push(`术语 ${t.name}`);
+    }
+    for (const x of fb.expressions) {
+      const r = await this.plugin.expressions.applyResult(x.name, x.pass);
+      if (r) applied++; else misses.push(`表达 ${x.name}`);
+    }
+    const entries = await this.plugin.errorLog.load();
+    for (const p of fb.points) {
+      const e = entries.find(x => x.topic.toLowerCase() === p.topic.toLowerCase());
+      if (!e) { misses.push(`失分点 ${p.topic}`); continue; }
+      if (p.pass) {
+        const next = e.status === '未消除' ? '观察中' : '已消除';
+        await this.plugin.errorLog.updateEntry(e.id, { status: next, reviewDate: addDays(todayStr(), 7) });
+      } else {
+        await this.plugin.errorLog.addEntry({ subject: e.subject, topic: e.topic, code: e.code });
+      }
+      applied++;
+    }
+    this.pendingFeedback = null;
+    void this.plugin.refreshStatusBar();
+    new Notice(misses.length ? `已应用 ${applied} 条；未匹配：${misses.join('、')}` : `已应用 ${applied} 条线下反馈`, misses.length ? 8000 : 4000);
+    this.render();
+  }
+
   /** 出变式题：跳到教练页签，用对应科目开会话并预填请求 */
   private async startVariantDrill(e: ErrorLogEntry): Promise<void> {
     this.saveCurrentSlot();
@@ -1360,6 +1427,40 @@ export function stripMachineBlocks(content: string): string {
 /** 思考凭证标注（导出供测试）：让教练知道学生真想满了门槛，而非口头声称 */
 export function thinkAnnotation(minutes: number): string {
   return `\n\n[插件注：该生刚由插件计时完成 ${minutes} 分钟独立思考，达到卡住耐受力门槛，请把试过的方向列出来再继续。]`;
+}
+
+/** 线下练习反馈：复习三队（失分点/术语/表达）的线下结果结构化 */
+export interface ReviewFeedback {
+  terms: { name: string; pass: boolean }[];
+  expressions: { name: string; pass: boolean }[];
+  points: { topic: string; pass: boolean }[];
+}
+
+/** 从 AI 解析回复提取线下练习反馈 JSON（宽容字段名差异）；导出供测试 */
+export function parseReviewFeedback(reply: string): ReviewFeedback {
+  const p = extractJson<{ reviewFeedback?: Record<string, unknown> }>(reply)?.reviewFeedback;
+  const fb: ReviewFeedback = { terms: [], expressions: [], points: [] };
+  if (!p || typeof p !== 'object') return fb;
+  const norm = (arr: unknown, nameKeys: string[], passOut: { name: string; pass: boolean }[] | { topic: string; pass: boolean }[], keyOut: 'name' | 'topic') => {
+    if (!Array.isArray(arr)) return;
+    for (const it of arr) {
+      if (!it || typeof it !== 'object') continue;
+      const o = it as Record<string, unknown>;
+      let name = '';
+      for (const k of nameKeys) {
+        const v = o[k];
+        if (typeof v === 'string' && v.trim()) { name = v.trim(); break; }
+      }
+      if (!name) continue;
+      const pass = o.pass !== false && o.result !== 'fail';
+      if (keyOut === 'name') (passOut as { name: string; pass: boolean }[]).push({ name, pass });
+      else (passOut as { topic: string; pass: boolean }[]).push({ topic: name, pass });
+    }
+  };
+  norm(p.terms, ['name', 'term', '术语'], fb.terms, 'name');
+  norm(p.expressions, ['name', 'expr', '表达'], fb.expressions, 'name');
+  norm(p.points, ['topic', 'name', '考点'], fb.points, 'topic');
+  return fb;
 }
 
 function shuffle<T>(arr: T[]): T[] {

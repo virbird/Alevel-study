@@ -8,6 +8,7 @@ import * as utIelts from './unit/ielts.test';
 import * as utReport from './unit/report.test';
 import * as utSse from './unit/sse.test';
 import * as utWrongAnswer from './unit/wronganswer.test';
+import * as utReviewFb from './unit/reviewfb.test';
 import * as utContext from './unit/context.test';
 import * as fvtSession from './fvt/session.test';
 import * as fvtDataflow from './fvt/dataflow.test';
@@ -23,6 +24,7 @@ async function main(): Promise<void> {
   await utReport.run();
   await utSse.run();
   await utWrongAnswer.run();
+  await utReviewFb.run();
   await utContext.run();
   await fvtSession.run();
   await fvtDataflow.run();

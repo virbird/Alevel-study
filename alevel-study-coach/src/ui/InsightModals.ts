@@ -186,3 +186,76 @@ export class DrillModal extends Modal {
     this.contentEl.empty();
   }
 }
+
+/**
+ * 线下练习反馈：复习可以在插件外自己练，把结果用自然语言报回来，
+ * AI 解析成三队（失分点/术语/表达）的结构化结果 → 复习页签确认卡片应用。
+ */
+import type { ReviewFeedback } from './MainView';
+
+const REVIEW_FEEDBACK_PARSE_PROMPT = `你是学习插件的解析模块。把学生线下复习/练习的结果整理成 JSON。
+当前待处理队列：
+【术语】
+%s
+【表达】
+%s
+【到期失分点】
+%s
+
+输出格式（用 \`\`\`json 代码块包裹）：
+{"reviewFeedback": {"terms": [{"name": "术语名", "pass": true}], "expressions": [{"name": "表达", "pass": false}], "points": [{"topic": "考点", "pass": true}]}}
+规则：只收录学生明确提到的条目，名称尽量与队列一致；pass=true 表示掌握/通过/会了，false 表示忘了/又错/还不会；不要编造未提到的条目；学生提到但队列里没有的，用最接近的名称收录。`;
+
+export class OfflineFeedbackModal extends Modal {
+  constructor(app: App, private plugin: ALevelStudyCoachPlugin, private context: string, private onParsed: (fb: ReviewFeedback, raw: string) => void) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.addClass('asc-modal');
+    contentEl.createEl('h2', { text: '汇报线下练习结果' });
+    contentEl.createEl('p', {
+      text: '复习也可以线下自己练。把结果用自然语言写下来，例如：「ceteris paribus 和 opportunity cost 背熟了，effervescence 还是记混；inverse relationship 我会造句了；上次 moments 那道变式题线下重做，做对了。」',
+      cls: 'setting-item-description',
+    });
+    const ta = contentEl.createEl('textarea', { cls: 'asc-textarea', attr: { rows: '6', placeholder: '今天线下练了什么？结果如何？' } });
+
+    const bar = new Setting(contentEl);
+    bar.addButton(b =>
+      b.setButtonText('解析并汇报').setCta().onClick(async () => {
+        const text = ta.value.trim();
+        if (!text) return new Notice('先写点什么');
+        if (!this.plugin.llm.configured) return new Notice('请先在设置里配置 LLM');
+        b.setButtonText('解析中…').setDisabled(true);
+        try {
+          const reply = await this.plugin.llm.chat({
+            messages: [
+              { role: 'user', content: REVIEW_FEEDBACK_PARSE_PROMPT.replace('%s', this.context.split('\n===\n')[0] ?? '').replace('%s', this.context.split('\n===\n')[1] ?? '').replace('%s', this.context.split('\n===\n')[2] ?? '') },
+              { role: 'user', content: text },
+            ],
+            maxTokens: 1500,
+          });
+          const { parseReviewFeedback } = await import('./MainView');
+          const fb = parseReviewFeedback(reply);
+          const total = fb.terms.length + fb.expressions.length + fb.points.length;
+          if (!total) {
+            new Notice('没有解析出可应用的反馈，请写得更具体些（提到具体的术语/表达/考点名）');
+            b.setButtonText('解析并汇报').setDisabled(false);
+            return;
+          }
+          this.close();
+          this.onParsed(fb, text);
+        } catch (e) {
+          new Notice(`解析失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+          b.setButtonText('解析并汇报').setDisabled(false);
+        }
+      }),
+    );
+    bar.addButton(b => b.setButtonText('取消').onClick(() => this.close()));
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
