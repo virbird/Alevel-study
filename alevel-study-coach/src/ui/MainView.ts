@@ -1234,7 +1234,7 @@ export class MainView extends ItemView {
     el.createEl('div', { text: '错题本（订正记录）', cls: 'asc-section-title' });
     const was = await this.plugin.wrongAnswers.load();
     if (!was.length) {
-      el.createDiv({ text: '还没有错题记录——教练会话里说「订正这题」+贴题目和你的作答即可。', cls: 'asc-empty' });
+      el.createDiv({ text: '还没有错题记录——教练会话里说「订正这题」，或直接贴题目和你的作答问对错（AI 会自动识别订正意图）。', cls: 'asc-empty' });
     } else {
       const wt = el.createEl('table', { cls: 'asc-table' });
       const whead = wt.createEl('tr');
