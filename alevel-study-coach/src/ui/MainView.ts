@@ -47,6 +47,10 @@ export class MainView extends ItemView {
   private attachments: { path: string; name: string }[] = [];
   /** 待随下一条消息发送的图片（vault 路径） */
   private pendingImages: string[] = [];
+  /** 结题请求已发出，回复成功后自动存档并关闭会话 */
+  private pendingClose = false;
+  /** 按科目隔离的会话槽：切科目时保存当前会话，切回时恢复 */
+  private slots: Partial<Record<string, { sessionId: string; messages: ChatMessage[]; savedCount: number; sessionTagged: boolean }>> = {};
   /** 独立思考计时器（提示词门槛的产品硬约束，仅会话内可用） */
   private timerDeadline = 0;
   private timerMinutes = 0;
@@ -73,8 +77,24 @@ export class MainView extends ItemView {
   }
 
   async onClose(): Promise<void> {
-    // 防止漏数据：关闭视图时把未存档的消息自动落盘
+    // 防止漏数据：关闭视图时把未存档的消息自动落盘（含其他科目槽里的未结束会话）
     await this.archiveIfNeeded(false);
+    for (const [mode, slot] of Object.entries(this.slots)) {
+      if (!slot || slot.messages.length <= slot.savedCount) continue;
+      const meta = SUBJECTS.find(s => s.key === mode);
+      const path = `${ROOT}/会话/${slot.sessionId}-${mode}.md`;
+      const existing = await this.plugin.vaultService.read(path);
+      const lines: string[] = [];
+      if (!existing) {
+        lines.push('---', `mode: ${mode}`, `started: "${todayStr()} ${timeStr()}"`, '---', '', `# 教练会话 ${todayStr()} · ${meta?.label ?? mode}`, '');
+      }
+      for (let i = slot.savedCount; i < slot.messages.length; i++) {
+        const m = slot.messages[i];
+        lines.push(`## ${m.role === 'user' ? '学生' : '教练'}`, '', m.content, '');
+      }
+      await this.plugin.vaultService.append(path, lines.join('\n'));
+    }
+    this.slots = {};
     if (this.timerInterval !== null) {
       window.clearInterval(this.timerInterval);
       this.timerInterval = null;
@@ -319,11 +339,12 @@ export class MainView extends ItemView {
     select.value = this.mode;
     select.setAttr('title', SUBJECTS.find(s => s.key === this.mode)?.label ?? '');
     select.addEventListener('change', () => {
-      this.mode = select.value as ModeKey;
-      select.setAttr('title', SUBJECTS.find(s => s.key === this.mode)?.label ?? '');
-      // 记住选择，下次打开保持
-      this.plugin.settings.lastCoachMode = this.mode;
-      void this.plugin.saveSettings();
+      const target = select.value as ModeKey;
+      select.setAttr('title', SUBJECTS.find(s => s.key === target)?.label ?? '');
+      // 会话按科目隔离：切科目 = 存当前会话 → 恢复目标科目会话（无则新开）
+      void this.switchMode(target).then(ok => {
+        if (!ok) select.value = this.mode; // 切换被拒（回复中）：下拉回退
+      });
     });
 
     // 会话生命周期按钮：无会话时是「新会话」，会话进行中变为「结题」
@@ -333,8 +354,10 @@ export class MainView extends ItemView {
     });
     sessionBtn.setAttr('title', this.systemPrompt ? '结束当前题：走结题流程（自评/审查/log 行/会话打标）' : '开始新会话：自动注入提示词、档案与未消除失分记录');
     sessionBtn.addEventListener('click', () => {
-      if (this.systemPrompt) void this.send(CLOSE_PROMPT);
-      else void this.startSession();
+      if (this.systemPrompt) {
+        this.pendingClose = true; // 结题回复完成后自动存档并关闭会话
+        void this.send(CLOSE_PROMPT);
+      } else void this.startSession();
     });
     // 文字小按钮代替易混淆的图标（历史≠计时）
     const textBtn = (label: string, title: string, onClick: () => void) => {
@@ -451,6 +474,7 @@ export class MainView extends ItemView {
   /** 进阶角思维题：数学会话 + 自动启动独立思考计时（提示词的思维题分支） */
   private async startOxbridgeSession(): Promise<void> {
     this.tab = 'coach';
+    this.saveCurrentSlot();
     this.mode = 'Maths';
     await this.startSession();
     await this.startTimer();
@@ -658,16 +682,79 @@ export class MainView extends ItemView {
       if (!raw.trim()) throw new Error('模型返回内容为空');
       console.log(`[StudyCoach] 回复完成：${deltas} 个流式增量块，共 ${raw.length} 字${deltas <= 1 ? '（未检测到流式增量：提供商可能不支持流式，已自动降级为整块请求）' : ''}`);
       this.messages.push({ role: 'assistant', content: raw });
+      // 结题回复完成：存档并关闭会话（下次切回本科目将新开会话）
+      if (this.pendingClose) {
+        this.pendingClose = false;
+        await this.closeSession();
+        return;
+      }
       await this.handleReplySideEffects(raw);
     } catch (e) {
       new Notice(`请求失败：${e instanceof Error ? e.message : String(e)}`, 10000);
       this.messages.pop(); // 撤回未成功的用户消息，方便重试
+      this.pendingClose = false;
     } finally {
       waiting = false;
       window.clearInterval(waitTicker);
       this.busy = false;
       this.render();
     }
+  }
+
+  /** 把当前未结束的会话存入当前科目槽（切走前调用，避免丢失） */
+  private saveCurrentSlot(): void {
+    if (this.systemPrompt && this.messages.length) {
+      this.slots[this.mode] = {
+        sessionId: this.sessionId,
+        messages: this.messages,
+        savedCount: this.savedCount,
+        sessionTagged: this.sessionTagged,
+      };
+    }
+  }
+
+  /** 切换科目：当前会话存入原科目槽，目标科目有未结束会话则恢复，否则新开 */
+  private async switchMode(newMode: ModeKey): Promise<boolean> {
+    const oldMode = this.mode;
+    if (newMode === oldMode) return true;
+    if (this.busy) {
+      new Notice('等当前回复完成再切换科目');
+      return false;
+    }
+    this.saveCurrentSlot();
+    this.mode = newMode;
+    this.plugin.settings.lastCoachMode = newMode;
+    await this.plugin.saveSettings();
+    const slot = this.slots[newMode];
+    if (slot) {
+      // 恢复该科目未结束的会话
+      delete this.slots[newMode];
+      this.sessionId = slot.sessionId;
+      this.messages = slot.messages;
+      this.savedCount = slot.savedCount;
+      this.sessionTagged = slot.sessionTagged;
+      await this.rebuildSystemPrompt();
+      this.render();
+    } else {
+      // 无未结束会话（从未开过或都已结题）→ 新开会话（含本地开场）
+      await this.startSession(true);
+    }
+    return true;
+  }
+
+  /** 结题后关闭会话：存档 + 清空状态（历史可通过「历史」按钮找回） */
+  private async closeSession(): Promise<void> {
+    await this.archiveIfNeeded(true);
+    this.systemPrompt = '';
+    this.messages = [];
+    this.savedCount = 0;
+    this.sessionTagged = false;
+    this.attachments = [];
+    this.pendingImages = [];
+    this.sessionSummary = '';
+    delete this.slots[this.mode];
+    new Notice('已结题：会话已存档并关闭');
+    this.render();
   }
 
   /** 回复的副作用：会话打标 → 提问记录；log 行 → 一键入库确认 */
@@ -990,6 +1077,7 @@ export class MainView extends ItemView {
 
   /** 出变式题：跳到教练页签，用对应科目开会话并预填请求 */
   private async startVariantDrill(e: ErrorLogEntry): Promise<void> {
+    this.saveCurrentSlot();
     this.mode = SUBJECT_TO_MODE[e.subject] ?? 'Maths';
     this.tab = 'coach';
     await this.startSession(false); // 变式题预填请求，不自动开场
