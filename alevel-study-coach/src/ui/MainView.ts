@@ -1135,9 +1135,10 @@ export class MainView extends ItemView {
 
   // ─── 记录 ────────────────────────────────────────────────
 
-  /** 可折叠分区卡片（复习/记录共用）：标题行（折叠钮+标题+徽标+动作）+ 主体；收起时返回 null 不渲染主体 */
+  /** 可折叠分区卡片（复习/记录共用）：标题行（折叠钮+标题+徽标+动作）+ 主体；
+   * 默认全部折叠（避免单个分区内容过长影响整体），手动展开后本会话保持；收起时返回 null 不渲染主体 */
   private collapsibleSection(key: string, el: HTMLElement, title: string, badge: string, hot: boolean, headerActions?: (h: HTMLElement) => void): HTMLElement | null {
-    const expanded = this.expanded[key] ?? hot;
+    const expanded = this.expanded[key] ?? false;
     const card = el.createDiv({ cls: 'asc-card asc-queue-card' });
     const head = card.createDiv({ cls: 'asc-queue-head' });
     const tg = head.createEl('button', { text: expanded ? '▾' : '▸', cls: 'asc-btn asc-btn-icon asc-fold-btn' });
@@ -1320,21 +1321,9 @@ export class MainView extends ItemView {
     // 待确认的线下反馈卡片
     if (this.pendingFeedback) this.renderFeedbackCard(el, this.pendingFeedback);
 
-    // 队列卡片工厂：标题行（▸/▾ 折叠 + 标题 + 计数徽标 + 操作按钮）+ 可折叠主体；
-    // 默认有内容的队展开、空队收起，可手动切换
-    const queue = (key: string, title: string, badge: string, hot: boolean, headerActions?: (h: HTMLElement) => void): HTMLElement | null => {
-      const expanded = this.expanded[key] ?? hot;
-      const card = el.createDiv({ cls: 'asc-card asc-queue-card' });
-      const head = card.createDiv({ cls: 'asc-queue-head' });
-      const tg = head.createEl('button', { text: expanded ? '▾' : '▸', cls: 'asc-btn asc-btn-icon asc-fold-btn' });
-      tg.setAttr('title', expanded ? '收起细节' : '展开细节');
-      tg.addEventListener('click', () => { this.expanded[key] = !expanded; this.render(); });
-      head.createSpan({ text: title, cls: 'asc-queue-title' });
-      head.createSpan({ text: badge, cls: 'asc-queue-badge' + (hot ? ' asc-badge-hot' : '') });
-      if (headerActions) headerActions(head);
-      if (!expanded) return null;
-      return card.createDiv({ cls: 'asc-queue-body' });
-    };
+    // 队列卡片工厂：复用共享折叠组件（默认全部折叠，手动展开）
+    const queue = (key: string, title: string, badge: string, hot: boolean, headerActions?: (h: HTMLElement) => void): HTMLElement | null =>
+      this.collapsibleSection(`rev-${key}`, el, title, badge, hot, headerActions);
 
     // ① 失分点复查：不重做原题，让 AI 出同考点、同陷阱的变式题
     const b1 = queue('points', '① 失分点复查', `${due.length} 条到期`, due.length > 0);
