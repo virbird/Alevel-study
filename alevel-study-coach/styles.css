@@ -238,12 +238,13 @@
 .asc-table-wrap {
   overflow: auto;
   flex: 1;
+  max-height: 420px;
 }
 
 .asc-table {
   border-collapse: collapse;
-  font-size: 12px;
   width: 100%;
+  font-size: 12px;
 }
 
 .asc-table th,
@@ -251,12 +252,16 @@
   border: 1px solid var(--background-modifier-border);
   padding: 3px 6px;
   text-align: left;
+}
+
+.asc-table th {
   white-space: nowrap;
 }
 
-.asc-table td:nth-child(7) {
-  max-width: 260px;
-  white-space: normal;
+/* 长文本单元格自动换行，避免截断不可读 */
+.asc-table td {
+  word-break: break-word;
+  vertical-align: top;
 }
 
 /* 复习页签 */

@@ -56,8 +56,8 @@ export class MainView extends ItemView {
   private compressing = false;
   /** 线下练习反馈待确认结果（复习页签确认卡片） */
   private pendingFeedback: ReviewFeedback | null = null;
-  /** 复习队列卡片展开状态（默认：有内容的队展开，空队收起） */
-  private reviewExpanded: Record<string, boolean> = {};
+  /** 复习/记录共用的展开状态（默认：有内容的区展开、空区收起） */
+  private expanded: Record<string, boolean> = {};
   /** 按科目隔离的会话槽：切科目时保存当前会话，切回时恢复 */
   private slots: Partial<Record<string, { sessionId: string; messages: ChatMessage[]; savedCount: number; sessionTagged: boolean }>> = {};
   /** 独立思考计时器（提示词门槛的产品硬约束，仅会话内可用） */
@@ -1134,118 +1134,146 @@ export class MainView extends ItemView {
   }
 
   // ─── 记录 ────────────────────────────────────────────────
+
+  /** 可折叠分区卡片（复习/记录共用）：标题行（折叠钮+标题+徽标+动作）+ 主体；收起时返回 null 不渲染主体 */
+  private collapsibleSection(key: string, el: HTMLElement, title: string, badge: string, hot: boolean, headerActions?: (h: HTMLElement) => void): HTMLElement | null {
+    const expanded = this.expanded[key] ?? hot;
+    const card = el.createDiv({ cls: 'asc-card asc-queue-card' });
+    const head = card.createDiv({ cls: 'asc-queue-head' });
+    const tg = head.createEl('button', { text: expanded ? '▾' : '▸', cls: 'asc-btn asc-btn-icon asc-fold-btn' });
+    tg.setAttr('title', expanded ? '收起细节' : '展开细节');
+    tg.addEventListener('click', () => { this.expanded[key] = !expanded; this.render(); });
+    head.createSpan({ text: title, cls: 'asc-queue-title' });
+    head.createSpan({ text: badge, cls: 'asc-queue-badge' + (hot ? ' asc-badge-hot' : '') });
+    if (headerActions) headerActions(head);
+    if (!expanded) return null;
+    return card.createDiv({ cls: 'asc-queue-body' });
+  }
+
   private async renderRecords(): Promise<void> {
     const el = this.bodyEl;
     const entries = await this.plugin.errorLog.load();
+    const ROW_CAP = 50;
 
     el.createEl('div', {
-      text: '记录中心：A-Level 失分记录与雅思记录统一展示（数据文件保持独立，不丢信息）。学科表达码（DV/CL/LK）与雅思 LR/GRA 同根。',
-      cls: 'asc-hint',
+      text: '记录中心：A-Level 与雅思记录统一展示（数据文件保持独立，零信息丢失）；全部明细见底部 .md 源文件。',
+      cls: 'asc-muted',
     });
-    el.createEl('div', { text: 'A-Level 失分记录', cls: 'asc-section-title' });
-
-    const bar = el.createDiv({ cls: 'asc-row' });
-    const subjectSel = bar.createEl('select', { cls: 'asc-select' });
-    subjectSel.createEl('option', { text: '全部科目', value: '' });
-    for (const s of ['', 'Maths', 'Physics', 'Chem', 'CS', 'Econ']) {
-      if (s) subjectSel.createEl('option', { text: s, value: s });
-    }
-    const statusSel = bar.createEl('select', { cls: 'asc-select' });
-    statusSel.createEl('option', { text: '全部状态', value: '' });
-    for (const s of ['未消除', '观察中', '已消除']) statusSel.createEl('option', { text: s, value: s });
-
-    const tableWrap = el.createDiv({ cls: 'asc-table-wrap' });
-    const draw = () => {
-      tableWrap.empty();
-      const filtered = entries.filter(
-        e => (!subjectSel.value || e.subject === subjectSel.value) && (!statusSel.value || e.status === statusSel.value),
-      );
-      if (!filtered.length) {
-        tableWrap.createDiv({ text: '没有符合条件的条目。', cls: 'asc-empty' });
-        return;
-      }
-      const table = tableWrap.createEl('table', { cls: 'asc-table' });
-      const head = table.createEl('tr');
-      for (const h of ['ID', '日期', '科目', '层级', '考点(EN)', '代码', '描述', '复发', '状态', '复查日期']) {
-        head.createEl('th', { text: h });
-      }
-      for (const e of filtered) {
-        const tr = table.createEl('tr');
-        for (const cell of [e.id, e.date, e.subject, e.level, e.topic, e.code, e.desc, String(e.recurrence), e.status, e.reviewDate]) {
-          tr.createEl('td', { text: cell });
-        }
-      }
-    };
-    subjectSel.addEventListener('change', draw);
-    statusSel.addEventListener('change', draw);
-    draw();
 
     const open = (path: string) => () => {
       const file = this.app.vault.getAbstractFileByPath(path);
       if (file instanceof TFile) void this.app.workspace.getLeaf(true).openFile(file);
     };
 
-    // 雅思批改记录（评分事件，与失分表语义不同，独立展示）
-    el.createEl('div', { text: '雅思批改记录（趋势轨迹）', cls: 'asc-section-title' });
+    // ① A-Level 失分记录（带科目/状态筛选）
+    const b1 = this.collapsibleSection('rec-errorlog', el, '① A-Level 失分记录', `${entries.length} 条`, entries.length > 0);
+    if (b1) {
+      const bar = b1.createDiv({ cls: 'asc-row' });
+      const subjectSel = bar.createEl('select', { cls: 'asc-select' });
+      subjectSel.createEl('option', { text: '全部科目', value: '' });
+      for (const s of ['Maths', 'Physics', 'Chem', 'CS', 'Econ']) subjectSel.createEl('option', { text: s, value: s });
+      const statusSel = bar.createEl('select', { cls: 'asc-select' });
+      statusSel.createEl('option', { text: '全部状态', value: '' });
+      for (const s of ['未消除', '观察中', '已消除']) statusSel.createEl('option', { text: s, value: s });
+      const tableWrap = b1.createDiv({ cls: 'asc-table-wrap' });
+      const draw = () => {
+        tableWrap.empty();
+        const filtered = entries.filter(
+          e => (!subjectSel.value || e.subject === subjectSel.value) && (!statusSel.value || e.status === statusSel.value),
+        );
+        if (!filtered.length) {
+          tableWrap.createDiv({ text: '没有符合条件的条目。', cls: 'asc-empty' });
+          return;
+        }
+        const table = tableWrap.createEl('table', { cls: 'asc-table' });
+        const head = table.createEl('tr');
+        for (const h of ['ID', '日期', '科目', '层级', '考点(EN)', '代码', '描述', '复发', '状态', '复查日期']) head.createEl('th', { text: h });
+        for (const e of filtered.slice(0, ROW_CAP)) {
+          const tr = table.createEl('tr');
+          for (const cell of [e.id, e.date, e.subject, e.level, e.topic, e.code, e.desc, String(e.recurrence), e.status, e.reviewDate]) tr.createEl('td', { text: cell });
+        }
+        if (filtered.length > ROW_CAP) tableWrap.createDiv({ text: `… 仅显示最近 ${ROW_CAP} 条，全 ${filtered.length} 条见 error-log.md`, cls: 'asc-muted' });
+      };
+      subjectSel.addEventListener('change', draw);
+      statusSel.addEventListener('change', draw);
+      draw();
+    }
+
+    // ② 雅思批改记录（评分事件，与失分表语义不同，独立展示）
     const scores = await this.plugin.ielts.loadScores();
-    if (!scores.length) {
-      el.createDiv({ text: '还没有批改记录。', cls: 'asc-empty' });
-    } else {
-      const st = el.createEl('table', { cls: 'asc-table' });
-      const shead = st.createEl('tr');
-      for (const h of ['日期', '来源', '总分', 'TR', 'CC', 'LR', 'GRA']) shead.createEl('th', { text: h });
-      for (const s of [...scores].reverse()) {
-        const tr = st.createEl('tr');
-        tr.createEl('td', { text: s.date });
-        const srcTd = tr.createEl('td', { text: s.title });
-        srcTd.addClass('asc-link');
-        srcTd.addEventListener('click', open(s.file));
-        for (const v of [s.overall, s.tr, s.cc, s.lr, s.gra]) tr.createEl('td', { text: v === null ? '-' : String(v) });
+    const b2 = this.collapsibleSection('rec-grades', el, '② 雅思批改记录（趋势）', `${scores.length} 次`, scores.length > 0);
+    if (b2) {
+      if (!scores.length) {
+        b2.createDiv({ text: '还没有批改记录。', cls: 'asc-empty' });
+      } else {
+        const wrap = b2.createDiv({ cls: 'asc-table-wrap' });
+        const st = wrap.createEl('table', { cls: 'asc-table' });
+        const shead = st.createEl('tr');
+        for (const h of ['日期', '来源', '总分', 'TR', 'CC', 'LR', 'GRA']) shead.createEl('th', { text: h });
+        for (const s of [...scores].reverse().slice(0, ROW_CAP)) {
+          const tr = st.createEl('tr');
+          tr.createEl('td', { text: s.date });
+          const srcTd = tr.createEl('td', { text: s.title });
+          srcTd.addClass('asc-link');
+          srcTd.addEventListener('click', open(s.file));
+          for (const v of [s.overall, s.tr, s.cc, s.lr, s.gra]) tr.createEl('td', { text: v === null ? '-' : String(v) });
+        }
       }
     }
 
-    // 表达积累库（雅思高分表达 + 学科通用，同一能力池）
-    el.createEl('div', { text: '表达积累库（雅思+学科通用）', cls: 'asc-section-title' });
+    // ③ 表达积累库（雅思高分表达 + 学科通用，同一能力池）
     const exprs = await this.plugin.expressions.load();
-    if (!exprs.length) {
-      el.createDiv({ text: '还没有积累表达——批改作文后自动入库。', cls: 'asc-empty' });
-    } else {
-      const et = el.createEl('table', { cls: 'asc-table' });
-      const ehead = et.createEl('tr');
-      for (const h of ['表达', '类型', '来源', '入库日期', '状态']) ehead.createEl('th', { text: h });
-      for (const x of exprs) {
-        const tr = et.createEl('tr');
-        for (const cell of [x.expr, x.type, x.source, x.date, x.status]) tr.createEl('td', { text: cell });
+    const b3 = this.collapsibleSection('rec-exprs', el, '③ 表达积累库', `${exprs.length} 条 · 已掌握 ${exprs.filter(x => x.status === '已掌握').length}`, exprs.length > 0);
+    if (b3) {
+      if (!exprs.length) {
+        b3.createDiv({ text: '还没有积累表达——批改作文后自动入库。', cls: 'asc-empty' });
+      } else {
+        const wrap = b3.createDiv({ cls: 'asc-table-wrap' });
+        const et = wrap.createEl('table', { cls: 'asc-table' });
+        const ehead = et.createEl('tr');
+        for (const h of ['表达', '类型', '来源', '入库日期', '状态']) ehead.createEl('th', { text: h });
+        for (const x of exprs.slice(0, ROW_CAP)) {
+          const tr = et.createEl('tr');
+          for (const cell of [x.expr, x.type, x.source, x.date, x.status]) tr.createEl('td', { text: cell });
+        }
+        if (exprs.length > ROW_CAP) wrap.createDiv({ text: `… 仅显示最近 ${ROW_CAP} 条，全 ${exprs.length} 条见积累库.md`, cls: 'asc-muted' });
       }
     }
 
-    // 提问记录（最近 20 条）
-    el.createEl('div', { text: '提问记录（最近 20 条）', cls: 'asc-section-title' });
-    const tags = (await this.plugin.engine.loadQuestionTags()).slice(-20).reverse();
-    if (!tags.length) {
-      el.createDiv({ text: '还没有提问记录——每次结题自动打标。', cls: 'asc-empty' });
-    } else {
-      const tt = el.createEl('table', { cls: 'asc-table' });
-      const thead = tt.createEl('tr');
-      for (const h of ['日期', '科目', '考点(EN)', '困惑类型', '求助深度']) thead.createEl('th', { text: h });
-      for (const t of tags) {
-        const tr = tt.createEl('tr');
-        for (const cell of [t.date, t.subject, t.topic, t.confusion, t.depth]) tr.createEl('td', { text: cell });
-      }
-    }
-
-    // 错题本（订正与卡题统一记录；题目会话结题后入库，未掌握条目自动注入教练提示词跟进）
-    el.createEl('div', { text: '错题本（订正与卡题记录）', cls: 'asc-section-title' });
+    // ④ 错题本（订正与卡题统一记录）
     const was = await this.plugin.wrongAnswers.load();
-    if (!was.length) {
-      el.createDiv({ text: '还没有错题记录——教练会话里问任何题（订正/卡住），结题后可一键入库；未掌握的会自动跟进。', cls: 'asc-empty' });
-    } else {
-      const wt = el.createEl('table', { cls: 'asc-table' });
-      const whead = wt.createEl('tr');
-      for (const h of ['ID', '日期', '科目', '考点(EN)', '我的错误', '错因码', '答案来源', '状态']) whead.createEl('th', { text: h });
-      for (const w of [...was].reverse()) {
-        const tr = wt.createEl('tr');
-        for (const cell of [w.id, w.date, w.subject, w.topic, w.myError, w.code, w.answerSource, w.status]) tr.createEl('td', { text: cell });
+    const openWasCount = was.filter(w => w.status === '未订正').length;
+    const b4 = this.collapsibleSection('rec-wrongs', el, '④ 错题本', `${was.length} 条${openWasCount ? ` · 未订正 ${openWasCount}` : ''}`, was.length > 0);
+    if (b4) {
+      if (!was.length) {
+        b4.createDiv({ text: '还没有错题记录——教练会话里问任何题（订正/卡住），结题后可一键入库。', cls: 'asc-empty' });
+      } else {
+        const wrap = b4.createDiv({ cls: 'asc-table-wrap' });
+        const wt = wrap.createEl('table', { cls: 'asc-table' });
+        const whead = wt.createEl('tr');
+        for (const h of ['ID', '日期', '科目', '考点(EN)', '我的错误', '错因码', '答案来源', '状态']) whead.createEl('th', { text: h });
+        for (const w of [...was].reverse().slice(0, ROW_CAP)) {
+          const tr = wt.createEl('tr');
+          for (const cell of [w.id, w.date, w.subject, w.topic, w.myError, w.code, w.answerSource, w.status]) tr.createEl('td', { text: cell });
+        }
+      }
+    }
+
+    // ⑤ 提问记录（最近 20 条）
+    const tags = (await this.plugin.engine.loadQuestionTags()).slice(-20).reverse();
+    const b5 = this.collapsibleSection('rec-questions', el, '⑤ 提问记录', `最近 ${tags.length} 条`, tags.length > 0);
+    if (b5) {
+      if (!tags.length) {
+        b5.createDiv({ text: '还没有提问记录——每次结题自动打标。', cls: 'asc-empty' });
+      } else {
+        const wrap = b5.createDiv({ cls: 'asc-table-wrap' });
+        const tt = wrap.createEl('table', { cls: 'asc-table' });
+        const thead = tt.createEl('tr');
+        for (const h of ['日期', '科目', '考点(EN)', '困惑类型', '求助深度']) thead.createEl('th', { text: h });
+        for (const t of tags) {
+          const tr = tt.createEl('tr');
+          for (const cell of [t.date, t.subject, t.topic, t.confusion, t.depth]) tr.createEl('td', { text: cell });
+        }
       }
     }
 
@@ -1253,8 +1281,8 @@ export class MainView extends ItemView {
     links.createEl('button', { text: '打开 error-log.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/error-log.md`));
     links.createEl('button', { text: '批改记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(GRADE_LEDGER_PATH));
     links.createEl('button', { text: '积累库.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(EXPR_LIB_PATH));
-    links.createEl('button', { text: '提问记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/提问记录.md`));
     links.createEl('button', { text: '错题本.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(WRONG_ANSWER_PATH));
+    links.createEl('button', { text: '提问记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/提问记录.md`));
     links.createEl('button', { text: '术语清单.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/术语清单.md`));
   }
 
@@ -1295,12 +1323,12 @@ export class MainView extends ItemView {
     // 队列卡片工厂：标题行（▸/▾ 折叠 + 标题 + 计数徽标 + 操作按钮）+ 可折叠主体；
     // 默认有内容的队展开、空队收起，可手动切换
     const queue = (key: string, title: string, badge: string, hot: boolean, headerActions?: (h: HTMLElement) => void): HTMLElement | null => {
-      const expanded = this.reviewExpanded[key] ?? hot;
+      const expanded = this.expanded[key] ?? hot;
       const card = el.createDiv({ cls: 'asc-card asc-queue-card' });
       const head = card.createDiv({ cls: 'asc-queue-head' });
       const tg = head.createEl('button', { text: expanded ? '▾' : '▸', cls: 'asc-btn asc-btn-icon asc-fold-btn' });
       tg.setAttr('title', expanded ? '收起细节' : '展开细节');
-      tg.addEventListener('click', () => { this.reviewExpanded[key] = !expanded; this.render(); });
+      tg.addEventListener('click', () => { this.expanded[key] = !expanded; this.render(); });
       head.createSpan({ text: title, cls: 'asc-queue-title' });
       head.createSpan({ text: badge, cls: 'asc-queue-badge' + (hot ? ' asc-badge-hot' : '') });
       if (headerActions) headerActions(head);
