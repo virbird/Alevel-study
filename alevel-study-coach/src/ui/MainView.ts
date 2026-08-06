@@ -561,12 +561,15 @@ export class MainView extends ItemView {
     }
   }
 
-  /** 从当前科目的提示词模板提取「开场」小节（单一数据源，用户改提示词开场跟着变） */
+  /** 从当前科目的提示词模板提取开场白：优先 ```opening 围栏（学生可见原文，不混入给 AI 的指令） */
   private async openingText(): Promise<string> {
     const meta = this.plugin.assembler.meta(this.mode);
     if (!meta) return '';
     const c = await this.plugin.vaultService.read(`${ROOT}/prompts/${meta.promptFile}`);
     if (!c) return '';
+    const fence = c.match(/```opening\n([\s\S]*?)```/);
+    if (fence) return fence[1].trim();
+    // 兜底：整个「开场」小节（旧格式兼容）
     const lines = c.split(/\r?\n/);
     const start = lines.findIndex(l => /^#\s*开场/.test(l));
     if (start < 0) return '';
