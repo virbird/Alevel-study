@@ -173,6 +173,15 @@ const WRONG_ANSWER_TEMPLATE = `# 错题本
 |---|---|---|---|---|---|---|---|
 `;
 
+const CONCEPT_MAP_TEMPLATE = `# 概念地图
+
+> 概念精练模式 F（章节级关系图）自动登记；「预习/待详学」的概念会注入提示词，
+> 以后真正学到时转详细掌握（学生确认后改为已学）。
+
+| 章节 | 概念 | 科目 | 状态 | 更新日期 |
+|---|---|---|---|---|
+`;
+
 const EXPR_LIB_TEMPLATE = `# 表达积累库
 
 > 雅思作文批改后自动提取的高分表达（也可手动添加）。
@@ -231,6 +240,7 @@ export class VaultService {
       await this.ensureFile(`${ROOT}/雅思/表达积累库.md`, EXPR_LIB_TEMPLATE);
       await this.ensureFile(`${ROOT}/雅思/批改记录.md`, GRADE_LEDGER_TEMPLATE);
       await this.ensureFile(`${ROOT}/记录/错题本.md`, WRONG_ANSWER_TEMPLATE);
+      await this.ensureFile(`${ROOT}/记录/概念地图.md`, CONCEPT_MAP_TEMPLATE);
 
       await this.seedPrompts();
     } catch (e) {

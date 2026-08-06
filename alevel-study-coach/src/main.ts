@@ -10,6 +10,7 @@ import { InsightEngine } from './services/InsightEngine';
 import { SuggestionService } from './services/SuggestionService';
 import { StatsService } from './services/StatsService';
 import { WrongAnswerService } from './services/WrongAnswerService';
+import { ConceptMapService } from './services/ConceptMapService';
 import { TermListService } from './services/TermService';
 import { IeltsService } from './services/IeltsService';
 import { ExpressionService } from './services/ExpressionService';
@@ -78,6 +79,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   ielts!: IeltsService;
   expressions!: ExpressionService;
   wrongAnswers!: WrongAnswerService;
+  conceptMap!: ConceptMapService;
   reports!: ReportService;
   assembler!: PromptAssembler;
   /** 当前批改任务（后台运行，雅思页签展示） */
@@ -101,6 +103,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     this.ielts = new IeltsService(this.vaultService);
     this.expressions = new ExpressionService(this.vaultService);
     this.wrongAnswers = new WrongAnswerService(this.vaultService);
+    this.conceptMap = new ConceptMapService(this.vaultService);
     this.engine = new InsightEngine(this.vaultService);
     this.suggestions = new SuggestionService(this.vaultService);
     this.stats = new StatsService(this.vaultService, this.engine);

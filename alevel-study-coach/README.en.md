@@ -17,7 +17,8 @@ tech base simplified-forked from AI Study Buddy.
 |---|---|
 | Per-subject sessions | Each subject keeps its own session; switching saves/restores automatically; concluding closes it |
 | Auto session start | A session opens instantly when you enter a subject — no button needed; sessions with no user input are never recorded |
-| Opening mode menu | The opening is rendered locally from the prompt's ` ```opening ` fence (zero API call): Concept Drill A–G (blind write / decomposition / colloquial rewrite / logic chain / drill / **F concept relation map — mermaid with keyword edges** / **G keyword recall — reproduce the whole map from keywords**); Economics A–D; IELTS A–D. Reply with a letter to pick a mode, jump anytime, or let the AI guide by context |
+| Opening mode menu | The opening is rendered locally from the prompt's ` ```opening ` fence (zero API call): Concept Drill A–G (blind write / decomposition / colloquial rewrite / logic chain / drill / **F concept relation map — chapter-level: includes learned + not-yet-learned concepts, the latter marked as preview with a short auto-explanation, mermaid with keyword edges** / **G keyword recall — reproduce the whole map from keywords**); Economics A–D; IELTS A–D. Reply with a letter to pick a mode, jump anytime, or let the AI guide by context |
+| Concept map | After a chapter-level F map, a confirm card registers concepts to `记录/概念地图.md` (chapter/concept/status); preview/pending concepts are auto-injected into the drill prompt so they switch to detailed mastery when actually learned, and become “learned” after confirmation; the records center shows the ledger |
 | Conclude flow | Conclude = self-review, scrutiny, error-log rows, session tagging; then auto-archive and auto-reopen a fresh session |
 | Problem solving & correction (unified) | Being stuck on a new problem and correcting a wrong one share one flow: any problem request enters it (with your attempt → compare; stuck → first ask how far you got); attempt images auto-transcribed; three-tier baseline for the correct answer (official / model solution verified by you / pending); locate the divergence and guide the correction; after conclude, a confirm card registers to the wrong-answer ledger and unmastered entries are auto-injected into later sessions |
 | Session extras | SSE streaming output, image attachments (vision models; more than 4 images are auto-batched for recognition with per-batch progress and resume-on-failure, transcripts merged into the session record), session-wide doc references, resume from history |
@@ -68,7 +69,7 @@ vault/StudyCoach/
 ├── 建议/            # weakness suggestion cards
 ├── 雅思/            # essays / grade ledger / expression library
 ├── 周报/            # weekly reports (idempotent overwrite)
-├── 记录/            # error log, wrong-answer ledger, question log, terms, practice focus, impressions, stats, progress, diary
+├── 记录/            # error log, wrong-answer ledger, concept map, question log, terms, practice focus, impressions, stats, progress, diary
 └── 会话/            # session archives (only written if there was interaction)
 ```
 

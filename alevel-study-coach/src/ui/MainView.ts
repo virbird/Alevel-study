@@ -12,6 +12,7 @@ import { SessionHistoryModal, AttachPickerModal, ImagePickerModal } from './Pick
 import { SuggestionModal, DrillModal, OfflineFeedbackModal } from './InsightModals';
 import { EXPR_LIB_PATH, GRADE_LEDGER_PATH, parseIeltsResult } from '../services/IeltsService';
 import { WRONG_ANSWER_PATH } from '../services/WrongAnswerService';
+import { CONCEPT_MAP_PATH } from '../services/ConceptMapService';
 import { oxbridgeGuidance } from '../services/ReportService';
 import type { TermEntry } from '../services/TermService';
 import type { ImagePart } from '../types';
@@ -443,6 +444,7 @@ export class MainView extends ItemView {
         if (this.mode === 'ielts') this.renderIeltsResultPrompt(bubble, m.content);
         else this.renderLogRowPrompt(bubble);
         this.renderWrongAnswerPrompt(bubble, m.content);
+        this.renderConceptMapPrompt(bubble, m.content);
       }
     }
     chatEl.scrollTop = chatEl.scrollHeight;
@@ -639,6 +641,17 @@ export class MainView extends ItemView {
         '════════ 插件注入：未订正的错题（来自错题本）════════\n' + lines.join('\n') +
         '\n使用方式：学生来问相关题目/考点时，先让他自己重做一遍这些错题再讨论；不主动占用会话时间逐一清算。',
       );
+    }
+    // 概念地图预习概念（仅概念精练）：以后学到时转详细掌握
+    if (this.mode === 'drill') {
+      const previews = await this.plugin.conceptMap.pendingDetail();
+      if (previews.length) {
+        const plines = previews.map(p => `- 【${p.subject}】${p.chapter}：${p.concept}（${p.status}）`);
+        extras.push(
+          '════════ 插件注入：概念地图中的预习概念（尚未详细学习）════════\n' + plines.join('\n') +
+          '\n使用方式：学生练到这些概念时是首次详细掌握，可从 A/B 正常练；练完让他确认「把 X 改为已学」。',
+        );
+      }
     }
     for (const a of this.attachments) {
       const c = await this.plugin.vaultService.read(a.path);
@@ -1278,11 +1291,32 @@ export class MainView extends ItemView {
       }
     }
 
+    // ⑥ 概念地图（模式 F 登记；预习/待详学概念注入概念精练提示词）
+    const cms = await this.plugin.conceptMap.load();
+    const pendingCount = cms.filter(c => c.status !== '已学').length;
+    const b6 = this.collapsibleSection('rec-conceptmap', el, '⑥ 概念地图', `${cms.length} 个概念${pendingCount ? ` · 预习/待详学 ${pendingCount}` : ''}`, cms.length > 0);
+    if (b6) {
+      if (!cms.length) {
+        b6.createDiv({ text: '还没有概念地图——概念精练里说「练 F」画章节级关系图，会自动登记。', cls: 'asc-empty' });
+      } else {
+        const wrap = b6.createDiv({ cls: 'asc-table-wrap' });
+        const ct = wrap.createEl('table', { cls: 'asc-table' });
+        const chead = ct.createEl('tr');
+        for (const h of ['章节', '概念', '科目', '状态', '更新日期']) chead.createEl('th', { text: h });
+        for (const c of cms.slice(0, ROW_CAP)) {
+          const tr = ct.createEl('tr');
+          for (const cell of [c.chapter, c.concept, c.subject, c.status, c.date]) tr.createEl('td', { text: cell });
+        }
+        if (cms.length > ROW_CAP) wrap.createDiv({ text: `… 仅显示最近 ${ROW_CAP} 条，全 ${cms.length} 条见概念地图.md`, cls: 'asc-muted' });
+      }
+    }
+
     const links = el.createDiv({ cls: 'asc-row' });
     links.createEl('button', { text: '打开 error-log.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/error-log.md`));
     links.createEl('button', { text: '批改记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(GRADE_LEDGER_PATH));
     links.createEl('button', { text: '积累库.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(EXPR_LIB_PATH));
     links.createEl('button', { text: '错题本.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(WRONG_ANSWER_PATH));
+    links.createEl('button', { text: '概念地图.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(CONCEPT_MAP_PATH));
     links.createEl('button', { text: '提问记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/提问记录.md`));
     links.createEl('button', { text: '术语清单.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/术语清单.md`));
   }
@@ -1464,6 +1498,34 @@ export class MainView extends ItemView {
     this.render();
   }
 
+  /** 概念地图确认卡片：模式 F 章节级画图结果 → 概念登记入台账 */
+  private renderConceptMapPrompt(parent: HTMLElement, reply: string): void {
+    const cm = parseConceptMap(reply);
+    if (!cm || !cm.concepts.length) return;
+
+    const bar = parent.createDiv({ cls: 'asc-logbar' });
+    bar.createSpan({ text: `检测到概念地图：【${cm.subject ?? '-'}】${cm.chapter ?? '-'} · ${cm.concepts.length} 个概念` });
+    for (const c of cm.concepts) {
+      bar.createEl('div', { text: `${c.status === '已学' ? '✓' : '◌'} ${c.name}（${c.status}）`, cls: 'asc-logrow' });
+    }
+    const btns = bar.createDiv();
+    btns.createEl('button', { text: '登记到概念地图', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', async ev => {
+      (ev.target as HTMLElement).setAttr('disabled', 'true');
+      try {
+        for (const c of cm.concepts) {
+          await this.plugin.conceptMap.upsert({ chapter: cm.chapter ?? '未分章', concept: c.name, status: c.status, subject: cm.subject });
+        }
+        const pending = cm.concepts.filter(c => c.status !== '已学').length;
+        new Notice(`已登记 ${cm.concepts.length} 个概念${pending ? `，其中 ${pending} 个预习/待详学（以后学到时提示词会提醒）` : ''}`);
+        bar.remove();
+      } catch (e) {
+        new Notice(`登记失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+        (ev.target as HTMLElement).removeAttribute('disabled');
+      }
+    });
+    btns.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
+  }
+
   /** 出变式题：跳到教练页签，用对应科目开会话并预填请求 */
   private async startVariantDrill(e: ErrorLogEntry): Promise<void> {
     this.saveCurrentSlot();
@@ -1491,7 +1553,7 @@ function fmtRemain(ms: number): string {
 /** 剥离回复里机器用 JSON 块（ieltsResult / sessionTag / wrongAnswer），其他内容原样保留；导出供测试 */
 export function stripMachineBlocks(content: string): string {
   return content
-    .replace(/```json\s*[\s\S]*?```/g, block => (/"ieltsResult"|"sessionTag"|"wrongAnswer"/.test(block) ? '' : block))
+    .replace(/```json\s*[\s\S]*?```/g, block => (/"ieltsResult"|"sessionTag"|"wrongAnswer"|"conceptMap"/.test(block) ? '' : block))
     .replace(/\n{3,}/g, '\n\n')
     .trimEnd();
 }
@@ -1535,6 +1597,33 @@ export function parseReviewFeedback(reply: string): ReviewFeedback {
   norm(p.points, ['topic', 'name', '考点'], fb.points, 'topic');
   norm(p.wrongs, ['topic', 'name', '错题'], fb.wrongs, 'topic');
   return fb;
+}
+
+/** 从 AI 回复提取概念地图 JSON（模式 F 收尾输出）；导出供测试 */
+export interface ConceptMapResult {
+  chapter: string;
+  subject: string;
+  concepts: { name: string; status: '已学' | '预习' | '待详学' }[];
+}
+
+export function parseConceptMap(reply: string): ConceptMapResult | null {
+  const p = extractJson<{ conceptMap?: Record<string, unknown> }>(reply)?.conceptMap;
+  if (!p || typeof p !== 'object' || !Array.isArray(p.concepts)) return null;
+  const concepts: ConceptMapResult['concepts'] = [];
+  for (const it of p.concepts) {
+    if (!it || typeof it !== 'object') continue;
+    const o = it as Record<string, unknown>;
+    const name = typeof o.name === 'string' ? o.name.trim() : '';
+    if (!name) continue;
+    const status = o.status === '预习' || o.status === '待详学' ? o.status : '已学';
+    concepts.push({ name, status });
+  }
+  if (!concepts.length) return null;
+  return {
+    chapter: typeof p.chapter === 'string' ? p.chapter.trim() : '',
+    subject: typeof p.subject === 'string' ? p.subject.trim() : '',
+    concepts,
+  };
 }
 
 function shuffle<T>(arr: T[]): T[] {
