@@ -433,9 +433,12 @@ export class MainView extends ItemView {
       }
     }
 
+    // IM 风格发送框：textarea 占满，底栏左侧图标 + 快捷键提示 + 右侧发送
     const inputBar = el.createDiv({ cls: 'asc-input-bar' });
-    // IM 风格：输入框内左侧图片图标，附加图片随下一条消息发送
-    const imgBtn = inputBar.createEl('button', { text: '🖼', cls: 'asc-btn asc-btn-icon' });
+    const input = inputBar.createEl('textarea', { attr: { rows: '2', placeholder: this.systemPrompt ? '把题目原文发过来……' : '先点「新会话」开始' } });
+    const actions = inputBar.createDiv({ cls: 'asc-input-actions' });
+    // 附加图片（随下一条消息发送）
+    const imgBtn = actions.createEl('button', { text: '🖼', cls: 'asc-btn asc-btn-icon' });
     imgBtn.setAttr('title', '附加图片（随下一条消息发送，可多选）');
     imgBtn.addEventListener('click', () =>
       new ImagePickerModal(this.app, this.pendingImages, f => {
@@ -443,8 +446,9 @@ export class MainView extends ItemView {
         this.render();
       }).open(),
     );
-    const input = inputBar.createEl('textarea', { attr: { rows: '2', placeholder: this.systemPrompt ? '把题目原文发过来……' : '先点「新会话」开始' } });
-    const sendBtn = inputBar.createEl('button', { text: this.busy ? '回复中…' : '发送', cls: 'asc-btn asc-btn-cta' });
+    const isMac = navigator.platform.toUpperCase().includes('MAC');
+    actions.createSpan({ text: `${isMac ? '⌘' : 'Ctrl'}↩ 发送`, cls: 'asc-input-hint' });
+    const sendBtn = actions.createEl('button', { text: this.busy ? '回复中…' : '发送', cls: 'asc-btn asc-btn-cta' });
     sendBtn.disabled = this.busy || !this.systemPrompt || this.timerDeadline > Date.now();
     const doSend = () => {
       const text = input.value.trim();
