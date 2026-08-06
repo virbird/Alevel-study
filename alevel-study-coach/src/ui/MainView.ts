@@ -49,6 +49,8 @@ export class MainView extends ItemView {
   private pendingImages: string[] = [];
   /** 结题请求已发出，回复成功后自动存档并关闭会话 */
   private pendingClose = false;
+  /** 自动开会话防重入标志 */
+  private startingSession = false;
   /** 按科目隔离的会话槽：切科目时保存当前会话，切回时恢复 */
   private slots: Partial<Record<string, { sessionId: string; messages: ChatMessage[]; savedCount: number; sessionTagged: boolean }>> = {};
   /** 独立思考计时器（提示词门槛的产品硬约束，仅会话内可用） */
@@ -81,6 +83,8 @@ export class MainView extends ItemView {
     await this.archiveIfNeeded(false);
     for (const [mode, slot] of Object.entries(this.slots)) {
       if (!slot || slot.messages.length <= slot.savedCount) continue;
+      // 无交互的槽会话不落盘
+      if (!slot.messages.some(m => m.role === 'user')) continue;
       const meta = SUBJECTS.find(s => s.key === mode);
       const path = `${ROOT}/会话/${slot.sessionId}-${mode}.md`;
       const existing = await this.plugin.vaultService.read(path);
@@ -347,18 +351,21 @@ export class MainView extends ItemView {
       });
     });
 
-    // 会话生命周期按钮：无会话时是「新会话」，会话进行中变为「结题」
-    const sessionBtn = bar.createEl('button', {
-      text: this.systemPrompt ? '✓ 结题' : '▶ 新会话',
-      cls: 'asc-btn' + (this.systemPrompt ? '' : ' asc-btn-cta'),
-    });
-    sessionBtn.setAttr('title', this.systemPrompt ? '结束当前题：走结题流程（自评/审查/log 行/会话打标）' : '开始新会话：自动注入提示词、档案与未消除失分记录');
-    sessionBtn.addEventListener('click', () => {
-      if (this.systemPrompt) {
+    // 当前科目无未结束会话 → 自动新开会话（无需点按钮；无交互则不会被记录）
+    if (!this.systemPrompt && !this.startingSession) {
+      this.startingSession = true;
+      void this.startSession(true).finally(() => { this.startingSession = false; });
+    }
+
+    // 会话生命周期按钮：会话始终自动存在，按钮只剩「结题」
+    if (this.systemPrompt) {
+      const sessionBtn = bar.createEl('button', { text: '✓ 结题', cls: 'asc-btn' });
+      sessionBtn.setAttr('title', '结束当前题：走结题流程（自评/审查/log 行/会话打标），完成后自动开新会话');
+      sessionBtn.addEventListener('click', () => {
         this.pendingClose = true; // 结题回复完成后自动存档并关闭会话
         void this.send(CLOSE_PROMPT);
-      } else void this.startSession();
-    });
+      });
+    }
     // 文字小按钮代替易混淆的图标（历史≠计时）
     const textBtn = (label: string, title: string, onClick: () => void) => {
       const b = bar.createEl('button', { text: label, cls: 'asc-btn asc-btn-small' });
@@ -406,7 +413,7 @@ export class MainView extends ItemView {
 
     const chatEl = el.createDiv({ cls: 'asc-chat' });
     if (this.messages.length === 0) {
-      chatEl.createDiv({ text: this.systemPrompt ? '会话已开始，把题目或问题发过来。' : '选择科目后点「新会话」开始（自动注入提示词、档案与未消除失分记录）。', cls: 'asc-empty' });
+      chatEl.createDiv({ text: this.systemPrompt ? '会话已开始，把题目或问题发过来。' : '正在开启会话…', cls: 'asc-empty' });
     }
     for (const m of this.messages) {
       const bubble = chatEl.createDiv({ cls: 'asc-msg asc-msg-' + m.role });
@@ -435,7 +442,7 @@ export class MainView extends ItemView {
 
     // IM 风格发送框：textarea 占满，底栏左侧图标 + 快捷键提示 + 右侧发送
     const inputBar = el.createDiv({ cls: 'asc-input-bar' });
-    const input = inputBar.createEl('textarea', { attr: { rows: '2', placeholder: this.systemPrompt ? '把题目原文发过来……' : '先点「新会话」开始' } });
+    const input = inputBar.createEl('textarea', { attr: { rows: '2', placeholder: this.systemPrompt ? '把题目原文发过来……' : '正在开启会话…' } });
     const actions = inputBar.createDiv({ cls: 'asc-input-actions' });
     // 附加图片（随下一条消息发送）
     const imgBtn = actions.createEl('button', { text: '🖼', cls: 'asc-btn asc-btn-icon' });
@@ -712,9 +719,9 @@ export class MainView extends ItemView {
     }
   }
 
-  /** 把当前未结束的会话存入当前科目槽（切走前调用，避免丢失） */
+  /** 把当前未结束的会话存入当前科目槽（切走前调用；无交互的不存，切回时直接新开） */
   private saveCurrentSlot(): void {
-    if (this.systemPrompt && this.messages.length) {
+    if (this.systemPrompt && this.messages.length && this.messages.some(m => m.role === 'user')) {
       this.slots[this.mode] = {
         sessionId: this.sessionId,
         messages: this.messages,
@@ -765,7 +772,8 @@ export class MainView extends ItemView {
     this.sessionSummary = '';
     delete this.slots[this.mode];
     new Notice('已结题：会话已存档并关闭');
-    this.render();
+    // 自动续开新会话（无需手动点按钮）
+    await this.startSession(true);
   }
 
   /** 回复的副作用：会话打标 → 提问记录；log 行 → 一键入库确认 */
@@ -861,6 +869,8 @@ export class MainView extends ItemView {
    */
   private async archiveIfNeeded(notify: boolean): Promise<void> {
     if (!this.messages.length || this.messages.length <= this.savedCount) return;
+    // 无交互（只有开场、学生没说过话）的会话不记录
+    if (!this.messages.some(m => m.role === 'user')) return;
     if (!this.sessionId) this.sessionId = `${todayStr()}-${timeStr()}`;
     const meta = SUBJECTS.find(s => s.key === this.mode);
     const path = `${ROOT}/会话/${this.sessionId}-${String(this.mode)}.md`;
