@@ -26,6 +26,9 @@ const SUBJECT_TO_MODE: Record<string, ModeKey> = {
 
 const CLOSE_PROMPT = '现在结题。请按提示词完成结题流程的剩余环节（包括 log 行），并在回复末尾输出会话标签 JSON。';
 
+// 新会话自动开场：插件代发的第一条消息，触发 AI 开场（无需学生先说话）
+const OPENING_KICK = '（会话开始：请按你提示词的开场开始，直接给出开场内容。）';
+
 type TabKey = 'home' | 'coach' | 'records' | 'review' | 'ielts';
 
 export class MainView extends ItemView {
@@ -510,7 +513,7 @@ export class MainView extends ItemView {
     }
   }
 
-  private async startSession(): Promise<void> {
+  private async startSession(autoOpen = true): Promise<void> {
     if (!this.plugin.llm.configured) {
       new Notice('请先在设置里配置 LLM（接口类型 / Base URL / Key / 模型）');
       return;
@@ -526,6 +529,10 @@ export class MainView extends ItemView {
     this.messages = [];
     this.sessionTagged = false;
     this.render();
+    // 自动开场：不等学生先说话，直接触发 AI 开场（概念精练的模式菜单也在这里给出）
+    if (autoOpen) {
+      await this.send(OPENING_KICK);
+    }
   }
 
   /** 组装 System Prompt（模板 + 档案 + 未消除 log + 进展 + 引用文档） */
@@ -967,7 +974,7 @@ export class MainView extends ItemView {
   private async startVariantDrill(e: ErrorLogEntry): Promise<void> {
     this.mode = SUBJECT_TO_MODE[e.subject] ?? 'Maths';
     this.tab = 'coach';
-    await this.startSession();
+    await this.startSession(false); // 变式题预填请求，不自动开场
     this.render();
     const input = this.bodyEl.querySelector<HTMLTextAreaElement>('.asc-input-bar textarea');
     if (input) {
