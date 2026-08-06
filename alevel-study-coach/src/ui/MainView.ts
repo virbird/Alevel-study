@@ -1230,11 +1230,11 @@ export class MainView extends ItemView {
       }
     }
 
-    // 错题本（订正会话结题后入库；未订正条目自动注入教练提示词跟进）
-    el.createEl('div', { text: '错题本（订正记录）', cls: 'asc-section-title' });
+    // 错题本（订正与卡题统一记录；题目会话结题后入库，未掌握条目自动注入教练提示词跟进）
+    el.createEl('div', { text: '错题本（订正与卡题记录）', cls: 'asc-section-title' });
     const was = await this.plugin.wrongAnswers.load();
     if (!was.length) {
-      el.createDiv({ text: '还没有错题记录——教练会话里说「订正这题」，或直接贴题目和你的作答问对错（AI 会自动识别订正意图）。', cls: 'asc-empty' });
+      el.createDiv({ text: '还没有错题记录——教练会话里问任何题（订正/卡住），结题后可一键入库；未掌握的会自动跟进。', cls: 'asc-empty' });
     } else {
       const wt = el.createEl('table', { cls: 'asc-table' });
       const whead = wt.createEl('tr');
