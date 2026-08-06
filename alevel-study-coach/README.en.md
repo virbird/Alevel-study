@@ -37,7 +37,7 @@ tech base simplified-forked from AI Study Buddy.
 | Error log ledger | 13-column main table; recurrence auto +1; review in 7 days (3 if recurring); status flows unresolved → observing → resolved |
 | 3-way routing | Specific losses → ledger; question-type habits → practice focus; vague claims → weakness impressions |
 | Records center | One tab shows all ledgers: A-Level error log + IELTS grades + expression library + question log (data files stay separate — zero information loss) |
-| Review reminders | Status-bar badge + one gentle notice per day; reviews use AI-generated variants, never the original question |
+| Review reminders | The Review tab shows today's full due list in three queues: error-log points (AI variant-question reviews, never the original), term drills, expression sentence drills; plus status-bar badge and one gentle daily notice |
 | Quick capture | One natural-language sentence → AI suggests a category → accept / edit / discard |
 
 ### Weakness Analysis

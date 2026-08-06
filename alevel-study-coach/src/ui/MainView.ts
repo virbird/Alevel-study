@@ -1258,14 +1258,21 @@ export class MainView extends ItemView {
   private async renderReview(): Promise<void> {
     const el = this.bodyEl;
     const due = await this.plugin.errorLog.dueEntries();
+    // 今日全部到期：失分点 + 术语（无排期，以未稳定/观察中为待抽查）+ 表达（SM-2 到期）
+    const terms = await this.plugin.terms.load();
+    const drillTerms = terms.filter(t => t.status !== '已稳定');
+    const exprDue = await this.plugin.expressions.due();
 
-    el.createDiv({
-      text: due.length
-        ? `${due.length} 条到期复查。复查方式：不重做原题，让 AI 出同考点、同陷阱的变式题。`
-        : '没有到期复查。待复查队列到期时这里会出现。',
+    el.createEl('div', {
+      text: `今日全部到期：失分点 ${due.length} · 术语待抽查 ${drillTerms.length} · 表达到期 ${exprDue.length}`,
       cls: 'asc-hint',
     });
 
+    // ① 失分点复查：不重做原题，让 AI 出同考点、同陷阱的变式题
+    el.createEl('div', { text: `① 失分点复查（${due.length}）`, cls: 'asc-section-title' });
+    if (!due.length) {
+      el.createDiv({ text: '没有到期失分点。待复查队列到期时这里会出现。', cls: 'asc-empty' });
+    }
     for (const e of due) {
       const card = el.createDiv({ cls: 'asc-card asc-review-card' });
       card.createEl('div', { text: `#${e.id} 【${e.subject}】${e.topic} · ${e.code} · 复发 ${e.recurrence}`, cls: 'asc-card-title' });
@@ -1287,6 +1294,34 @@ export class MainView extends ItemView {
         void this.plugin.refreshStatusBar();
         this.render();
       });
+    }
+
+    // ② 术语抽查：未稳定/观察中全抽 + 已稳定随机回抽一条（防假性掌握）
+    el.createEl('div', { text: `② 术语抽查（待抽查 ${drillTerms.length}）`, cls: 'asc-section-title' });
+    if (!drillTerms.length) {
+      el.createDiv({ text: '术语清单里没有待抽查条目（学习/结题会自动积累）。', cls: 'asc-empty' });
+    } else {
+      for (const t of drillTerms.slice(0, 5)) {
+        el.createDiv({ text: `- ${t.term}（${t.subject} · ${t.status}）`, cls: 'asc-row asc-muted' });
+      }
+      if (drillTerms.length > 5) el.createDiv({ text: `… 还有 ${drillTerms.length - 5} 条`, cls: 'asc-muted' });
+      el.createDiv({ cls: 'asc-row' })
+        .createEl('button', { text: '开始术语抽查（30 秒盲写）', cls: 'asc-btn asc-btn-cta asc-btn-small' })
+        .addEventListener('click', () => void this.startDrill());
+    }
+
+    // ③ 表达造句抽查：SM-2 到期的表达逐条造句，AI 判定升档/重置
+    el.createEl('div', { text: `③ 表达造句抽查（到期 ${exprDue.length}）`, cls: 'asc-section-title' });
+    if (!exprDue.length) {
+      el.createDiv({ text: '没有到期表达——批改作文会自动积累，到期后这里提示。', cls: 'asc-empty' });
+    } else {
+      for (const x of exprDue.slice(0, 5)) {
+        el.createDiv({ text: `- ${x.expr}（${x.type}）`, cls: 'asc-row asc-muted' });
+      }
+      if (exprDue.length > 5) el.createDiv({ text: `… 还有 ${exprDue.length - 5} 条`, cls: 'asc-muted' });
+      el.createDiv({ cls: 'asc-row' })
+        .createEl('button', { text: '开始造句抽查', cls: 'asc-btn asc-btn-cta asc-btn-small' })
+        .addEventListener('click', () => void this.plugin.startExpressionDrill());
     }
   }
 
