@@ -1,90 +1,79 @@
-# A-Level Study Coach（Obsidian 插件 · Phase 1）
+# A-Level Study Coach（Obsidian 插件）
 
 A-Level 学习**辅助**教练：主学习在线下，需要协助时才打开它——概念不懂、题目卡住、作文批改。
 插件记录每次求助，逐步发现弱点；目标 A-Level 全 A*、雅思 7.5+。
 
-产品设计见仓库 `docs/产品设计.md`（v0.3）。提示词体系来自 chat-2 教练配置包，
-技术底座简化 fork 自 AI Study Buddy（LLM_Private_Teacher）。
+An **assistive** A-Level study coach for Obsidian: offline-first learning, open the plugin only when
+you need help — unclear concepts, stuck on a problem, or essay grading. Every request is logged to
+discover weaknesses over time. Targets: A-Level all A*, IELTS 7.5+.
 
-## Phase 1 功能
+产品设计见 `docs/产品设计.md`（v0.3）。提示词体系来自 chat-2 教练配置包，技术底座简化 fork 自 AI Study Buddy。
+Product design: `docs/产品设计.md` (v0.3). Prompt system from the chat-2 coach pack; tech base simplified-forked from AI Study Buddy.
 
-| 功能 | 说明 |
-|---|---|
-| 冷启动 | 用自己的话描述现状 → AI 提取（三层分流）→ 逐条确认 |
-| 教练会话 | 选科目 → 自动注入 prompt + 学生档案 + 未消除失分记录 + 最近进展 + 本期专项；结题后 log 行一键入库 |
-| 会话打标 | 每次结题 AI 自动输出会话标签 → 追加到 `提问记录.md`（弱点分析的数据源） |
-| Error Log | 13 列主表；复发自动 +1（不新增行）；复查默认 7 天 / 复发 3 天；状态流转 未消除→观察中→已消除 |
-| 三层分流 | 具体失分→主表；题型/习惯倾向→练习侧重；模糊自述→弱点印象（按科目过滤注入） |
-| 随手记 | 一句自然语言 → AI 建议归类（进展/失分/术语/日志）→ 收/改/丢 确认 |
-| 复习提醒 | 状态栏 📌 徽标 + 每日一次温和 Notice；复查用 AI 变式题（不重做原题） |
-| 会话管理 | 自动存档防丢 / 历史会话加载续聊 / 引用文档作为会话上下文 |
+## 功能总览 · Feature Overview
 
-## Phase 2 功能（弱点发现与学习建议）
+### 教练会话 · Coach Sessions
 
-| 功能 | 说明 |
-|---|---|
-| 弱点分析引擎 | 提问热点 × 复发热点 × 表达码趋势 × 术语堆积 × 复查堆积，纯本地统计，阈值内置（单信号 ≥3 条才出建议） |
-| 建议卡片 | 分析命中后落盘 `建议/` 下 Markdown；首页卡片：看建议/以后再说/不准确（含反馈回路） |
-| 学习建议 | 仅在同意后调一次 LLM 生成：诊断 + 线下可执行动作 + 插件内动作，不排日程表 |
-| 统计分析 | 每周提问热点 / 每两周复发热点写入 `记录/统计分析.md`；本期专项自动注入教练 prompt |
-| 术语抽查 | 模式 E：随机抽 3 条 + 已稳定回抽 1 条，30 秒盲写，结果自动更新术语状态（未稳定→观察中→已稳定） |
-| 独立思考计时器 | 会话内能力：按档案门槛倒计时，未到门槛拦截发送；跑满后下一条消息自动带「思考凭证」标注，供教练按思维题模式验证 |
+| 功能 | Feature | 说明 / Description |
+|---|---|---|
+| 按科目隔离的会话 | Per-subject sessions | 每个科目维护自己的会话；切科目自动存/恢复，结题即关闭 / Each subject keeps its own session; switching saves/restores automatically, concluding closes it |
+| 自动开会话 | Auto session start | 进入科目即新开会话并展示开场，无需点按钮；无交互的会话不记录 / Sessions open automatically on entry; sessions with no user input are never recorded |
+| 开场模式菜单 | Opening mode menu | 开场白从提示词 ` ```opening ` 围栏本地零请求展示（概念精练 A-E / 经济 A-D / 雅思 A-D）；回复字母选模式、随时显式跳转、不选则 AI 场景引导 / Opening is rendered locally (zero API call); reply a letter to pick a mode, jump anytime, or let the AI guide |
+| 结题闭环 | Conclude flow | 结题=自评/审查/log 行/会话打标，完成后自动存档并续开新会话 / Conclude = self-review, log rows, session tagging, then auto-archive and auto-reopen |
+| 会话增强 | Session extras | SSE 流式输出、发图（视觉模型，限 4 张/5MB）、引用文档作全会话上下文、历史会话续聊 / Streaming output, image attachments, session-wide doc references, resume from history |
+| 独立思考计时 | Think-first timer | 会话内倒计时，未到门槛拦截发送；跑满后消息带「思考凭证」 / In-session countdown; sending is blocked before the threshold; full time adds a "thinking credit" note |
 
-## Phase 3 功能（雅思专线）
+### 上下文与模型 · Context & Models
 
-| 功能 | 说明 |
-|---|---|
-| 作文批改 | 教练「雅思写作训练」会话内批改/点评/讨论（可混用，分数可入库）；或命令/首页「批改当前作文」：打开任意笔记（题目+作文同篇，可含图片），六段输出写入笔记「## AI 批改」，正式存档支持复批对比。无独立雅思页签：分数趋势/表达抽查/批改记录入口均在首页 |
-| 分数台账 | 每次批改的总分与 TR/CC/LR/GRA 追加进 `雅思/批改记录.md`（重写同一篇会多行，正好是提升轨迹）；解析失败不阻塞正文回填 |
-| 趋势与短板 | 首页雅思卡片：近 3 篇分数、短板维度高亮、距 7.5 目标差距 |
-| 表达积累库 | 批改提取高分表达自动入库（去重），SM-2 简化间隔 1→3→7→14→30→60 天 |
-| 表达造句抽查 | 到期表达逐个造句，AI 判定后自动升档/重置，封顶再通过→已掌握 |
-| 与 A-Level 联动 | 首页弱点雷达展示学科 DV/CL/LK 表达码趋势，与雅思 LR/GRA 同一能力（正反馈） |
+| 功能 | Feature | 说明 / Description |
+|---|---|---|
+| 全局模型选择 | Global model selector | 顶部下拉作用于所有 AI 调用；设置页模型列表化管理（逐个添加/单独测试/设为默认/删除），按接口分别配置 / Top-bar selector for all AI calls; settings list manages models per provider (add / test individually / set default / delete) |
+| 上下文管理 | Context management | 发送框下方显示「已用上下文 x/y（n%）」；阈值可配置（默认 80%），超限红色提示+「强制压缩」；压缩为耗时操作，全程有提示 / Usage shown under the input box; threshold configurable (default 80%); over-limit turns red with a "force compress" button; compression is long-running and always shows progress notices |
 
-## Phase 4 功能（Dashboard 完整版与牛剑延伸）
+### 记录与复习 · Records & Review
 
-| 功能 | 说明 |
-|---|---|
-| 弱点雷达环比 | 首页展示 DV/CL/LK 表达码双周环比（下降才是目标）+ 复发热点 Top3 |
-| 进阶角 | 档案启用后首页显示：按阶段给进阶考试指引（G10 UKMT → G11 MAT/TMUA → G12 STEP/PAT/ESAT），一键开思维题会话并自动启动独立思考计时 |
-| 周报导出 | 命令/首页按钮生成 `周报/{ISO周}.md`：求助/失分与复发/复习/术语/雅思/建议卡片六块统计，可手动补主观复盘 |
+| 功能 | Feature | 说明 / Description |
+|---|---|---|
+| Error Log | Error log ledger | 13 列主表；复发自动 +1；复查 7 天 / 复发 3 天；状态流转 未消除→观察中→已消除 / Recurrence auto +1; review in 7d (3d if recurring); status flows unresolved→observing→resolved |
+| 三层分流 | 3-way routing | 具体失分→主表；题型/习惯→练习侧重；模糊自述→弱点印象 / Specific losses → ledger; habits → practice focus; vague claims → weakness impressions |
+| 记录中心 | Records center | 「记录」页签统一展示 A-Level 失分表 + 雅思批改记录 + 表达积累库 + 提问记录（数据文件保持独立，零信息丢失） / One tab shows all ledgers (data files stay separate, zero information loss) |
+| 复习提醒 | Review reminders | 状态栏徽标 + 每日温和 Notice；复查用 AI 变式题（不重做原题） / Status-bar badge + daily gentle notice; reviews use AI-generated variants, never the same question |
+| 随手记 | Quick capture | 一句自然语言 → AI 建议归类 → 收/改/丢 确认 / One natural sentence → AI suggests a category → accept/edit/discard |
 
-## Phase 5 功能（教练会话增强）
+### 弱点分析 · Weakness Analysis
 
-| 功能 | 说明 |
-|---|---|
-| 流式输出 | 教练会话 SSE 流式渲染（fetch 桌面 / XHR 降级 iPad），增量显示、完成后渲染 markdown |
-| 会话发图 | 「＋图片」从 vault 选图附加，或消息内 ![[x.png]] embed；随消息发给视觉模型，限 4 张/5MB |
-| 雅思统一入口 | 教练「雅思写作训练」：意图识别（完整批改/段落点评/讨论异议/针对练习）可混用；会话内批改结果出确认卡片，分数进台账、表达进积累库 |
-| 模型快捷切换 | 页面顶部全局模型下拉（作用于教练/批改/抽查等所有 AI 调用）；候选列表与默认模型按接口分别配置，默认 ★ 置顶，切接口自动应用其默认模型 |
-| 上下文管理 | 教练会话窗口旁实时显示上下文用量（估算 token/窗口）；超 80% 发送前自动压缩，也可手动点「压缩」（早期对话→摘要，保留最近几轮） |
+| 功能 | Feature | 说明 / Description |
+|---|---|---|
+| 分析引擎 | Insight engine | 提问热点 × 复发热点 × 表达码趋势 × 术语/复查堆积，纯本地统计，单信号 ≥3 条才出建议 / Local stats across 5 signals; suggestions need ≥3 hits |
+| 建议卡片 | Suggestion cards | 落盘 `建议/`；看建议/不准确反馈回路；同意后一次性生成学习建议（不排日程表） / Persisted cards with feedback loop; study advice generated only after consent |
+| 周报导出 | Weekly report | `周报/{ISO周}.md` 六块统计（求助/失分复发/复习/术语/雅思/建议） / Six stat blocks per ISO week |
+| 进阶角 | Advanced corner | 按阶段给进阶考试指引（G10 UKMT → G11 MAT/TMUA → G12 STEP/PAT/ESAT），一键思维题会话+自动计时 / Stage-based exam roadmap + one-click thinking-problem session with auto timer |
 
-## 数据位置（全部在 vault 内，git / iCloud 可同步）
+### 雅思 · IELTS
+
+| 功能 | Feature | 说明 / Description |
+|---|---|---|
+| 统一训练入口 | Unified entry | 教练「雅思写作训练」：A 完整批改 / B 段落点评 / C 讨论与异议 / D 针对练习，可混用、可中途切换 / Grade / comment / dispute / practice modes, freely mixed and switchable mid-session |
+| 任意笔记批改 | Grade any note | 打开任意笔记（题目+作文同篇，可含图片），六段输出写入「## AI 批改」，支持复批归档对比 / Grade any note with six-part output; re-grading archives the previous version |
+| 分数台账 | Score ledger | 每次批改总分与 TR/CC/LR/GRA 追加进 `雅思/批改记录.md`，即提升轨迹 / Every grade appends to the ledger — your improvement trajectory |
+| 表达积累库 | Expression library | 批改提取高分表达自动入库（去重），SM-2 简化间隔 1→3→7→14→30→60 天，到期造句抽查 / High-score expressions auto-collected with simplified SM-2 scheduling and sentence drills |
+
+## 数据位置 · Data Locations（全部在 vault 内，git / iCloud 可同步 · all inside the vault, syncable via git / iCloud）
 
 ```
 vault/StudyCoach/
-├── 档案.md          # frontmatter 学生参数（设置页可改）
-├── 三年路线图.md
-├── prompts/         # 六份教练提示词 + 雅思批改，可直接编辑
-├── 建议/            # 弱点建议卡片（同意后生成学习建议）
-├── 雅思/
-│   ├── 作文/        # 旧流程作文笔记（新流程直接批改任意笔记）
-│   ├── 批改记录.md  # 分数台账（趋势数据源）
-│   └── 表达积累库.md # 高分表达 + SM-2 间隔调度
-├── 周报/            # 每周自动统计（幂等覆盖，可手改）
-├── 记录/
-│   ├── error-log.md # 失分主表 + 代码表
-│   ├── 提问记录.md  # 每次求助自动追加
-│   ├── 术语清单.md
-│   ├── 练习侧重.md  # 题型/习惯倾向，注入教练 prompt
-│   ├── 弱点印象.md  # 模糊自述，待验证先验
-│   ├── 统计分析.md  # 提问/复发热点 + 本期专项
-│   ├── 进展/        # 每科一份，日期+一句话
-│   └── 学习日志.md
-└── 会话/            # 教练对话存档
+├── 档案.md          # 学生参数 frontmatter（设置页可改）/ student profile
+├── 三年路线图.md    # 3-year roadmap
+├── prompts/         # 教练提示词（含 ```opening 围栏），可直接编辑 / coach prompts, editable
+├── 建议/            # 弱点建议卡片 / suggestion cards
+├── 雅思/            # 作文/ 批改记录.md（台账）/ 表达积累库.md / IELTS essays, ledger, library
+├── 周报/            # 每周统计（幂等覆盖）/ weekly reports
+├── 记录/            # error-log / 提问记录 / 术语清单 / 练习侧重 / 弱点印象 / 统计分析 / 进展 / 学习日志
+│                    # records: error log, question log, terms, focus, impressions, stats, progress, diary
+└── 会话/            # 教练对话存档（无交互不落盘）/ session archives (only if there was interaction)
 ```
 
-## 安装
+## 安装 · Installation
 
 ```bash
 npm install
@@ -92,35 +81,30 @@ npm run build
 ./install.sh /path/to/your/vault
 ```
 
-然后在 Obsidian：设置 → 第三方插件 → 启用 **A-Level Study Coach** → 插件设置里配置 LLM
-（OpenAI 兼容端点或 Anthropic 原生；Key 只存本机）。
+然后在 Obsidian：设置 → 第三方插件 → 启用 **A-Level Study Coach** → 插件设置里配置 LLM（OpenAI 兼容端点或 Anthropic 原生；Key 只存本机）。
+Then in Obsidian: Settings → Community plugins → enable **A-Level Study Coach** → configure the LLM in plugin settings (OpenAI-compatible endpoint or native Anthropic; the key stays on your machine).
 
-## 开发
+## 开发 · Development
 
 ```bash
 npm run dev        # esbuild watch
 npm run typecheck  # tsc --noEmit
-npm test           # UT + FVT 全量套件（每次改动必须全绿）
+npm test           # UT + FVT 全量套件（每次改动必须全绿）/ full suite, must stay green
 ```
 
 测试体系（test/，基于 FakeVault 隔离 obsidian，node 直接跑）：
 
-| 层 | 范围 |
-|---|---|
-| UT: utils | 日期计算、frontmatter/表格解析、JSON 提取 |
-| UT: errorlog | 解析/入库/复发规则/AI 行容错/冲突保护/到期排序 |
-| UT: services | 档案往返、印象与侧重（含科目过滤）、术语状态流转、提问记录/进展 |
-| UT: insight | 分析引擎阈值、统计区块更新、建议卡片状态机、Prompt 组装与注入 |
-| UT: ielts | 批改结果解析容错、图片提取与限制、任意笔记批改回填、分数台账合并、多模态 content 构建、表达调度 |
-| UT: report | 环比窗口、ISO 周标识、周报六块统计、进阶阶段指引 |
-| FVT: session | 完整求助闭环：注入→结题→打标+入库→复发→存档续聊 |
-| FVT: dataflow | 冷启动三层分流、复习流转、分析循环（统计→候选→卡片→反馈） |
-| FVT: ielts | 批改闭环：新建→空文拦截→回填→分数入库→表达去重→趋势短板 |
+| 层 | Layer | 范围 / Scope |
+|---|---|---|
+| UT | utils / errorlog / services / insight / ielts / report | 解析、入库规则、状态机、分析阈值、批改容错、周报统计 / parsing, ledger rules, state machines, thresholds, grading tolerance, report stats |
+| FVT | session | 完整求助闭环：注入→结题→打标+入库→复发→存档续聊 / full help loop |
+| FVT | dataflow | 冷启动三层分流、复习流转、分析循环 / cold-start routing, review flow, analysis cycle |
+| FVT | ielts | 批改闭环：回填→分数入库→表达去重→趋势短板 / grading closed loop |
 
-## 已知限制（刻意不做）
+## 已知限制 · Known Limitations（刻意不做 · by design）
 
-- 术语/表达抽查弹窗仍为非流式（回复短，无需流式）
-- 雅思口语/听力/阅读不做批改不做打卡（线下主学习范畴，只在学习建议里作为线下动作）
-- 周报/雷达为文本统计，不引入图表库（保持轻量，数据都是 Markdown 可接 dataview）
-- prompt 模板更新不会覆盖 vault 里已存在的文件（用户修改优先）
-- 流式输出依赖 fetch（桌面 Electron / iPad WebKit）；若提供商拦截浏览器 CORS，换 OpenAI 兼容网关端点
+- 术语/表达抽查弹窗非流式（回复短，无需流式）/ drill modals are non-streaming (short replies)
+- 雅思口语/听力/阅读不做批改打卡（线下主学习范畴）/ no IELTS speaking/listening/reading features (offline scope)
+- 周报/雷达为文本统计，不引入图表库（保持轻量）/ reports are plain text, no chart libs
+- prompt 模板更新不覆盖 vault 已存在文件（用户修改优先）/ template updates never overwrite existing vault files
+- 流式依赖 fetch；提供商拦截 CORS 时换 OpenAI 兼容网关 / streaming relies on fetch; use an OpenAI-compatible gateway if CORS is blocked
