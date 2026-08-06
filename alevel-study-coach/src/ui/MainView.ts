@@ -26,9 +26,6 @@ const SUBJECT_TO_MODE: Record<string, ModeKey> = {
 
 const CLOSE_PROMPT = '现在结题。请按提示词完成结题流程的剩余环节（包括 log 行），并在回复末尾输出会话标签 JSON。';
 
-// 新会话自动开场：插件代发的第一条消息，触发 AI 开场（无需学生先说话）
-const OPENING_KICK = '（会话开始：请按你提示词的开场开始，直接给出开场内容。）';
-
 type TabKey = 'home' | 'coach' | 'records' | 'review' | 'ielts';
 
 export class MainView extends ItemView {
@@ -529,10 +526,31 @@ export class MainView extends ItemView {
     this.messages = [];
     this.sessionTagged = false;
     this.render();
-    // 自动开场：不等学生先说话，直接触发 AI 开场（概念精练的模式菜单也在这里给出）
+    // 自动开场：直接本地展示提示词里的开场内容，不请求模型（学生第一次输入后才请求）；
+    // 开场作为 assistant 消息进历史，模型后续回复能看到自己给过的菜单/问题
     if (autoOpen) {
-      await this.send(OPENING_KICK);
+      const opening = await this.openingText();
+      if (opening) {
+        this.messages.push({ role: 'assistant', content: opening });
+        this.render();
+      }
     }
+  }
+
+  /** 从当前科目的提示词模板提取「开场」小节（单一数据源，用户改提示词开场跟着变） */
+  private async openingText(): Promise<string> {
+    const meta = this.plugin.assembler.meta(this.mode);
+    if (!meta) return '';
+    const c = await this.plugin.vaultService.read(`${ROOT}/prompts/${meta.promptFile}`);
+    if (!c) return '';
+    const lines = c.split(/\r?\n/);
+    const start = lines.findIndex(l => /^#\s*开场/.test(l));
+    if (start < 0) return '';
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i++) {
+      if (/^#\s/.test(lines[i]) || lines[i].startsWith('════')) { end = i; break; }
+    }
+    return lines.slice(start + 1, end).join('\n').trim();
   }
 
   /** 组装 System Prompt（模板 + 档案 + 未消除 log + 进展 + 引用文档） */
