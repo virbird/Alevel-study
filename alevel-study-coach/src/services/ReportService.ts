@@ -7,6 +7,7 @@ import type { InsightEngine } from './InsightEngine';
 import type { TermListService } from './TermService';
 import type { IeltsService } from './IeltsService';
 import type { SuggestionService } from './SuggestionService';
+import type { WrongAnswerService } from './WrongAnswerService';
 
 export const REPORT_DIR = `${ROOT}/周报`;
 
@@ -22,6 +23,7 @@ export class ReportService {
     private terms: TermListService,
     private ielts: IeltsService,
     private suggestions: SuggestionService,
+    private wrongAnswers?: WrongAnswerService,
   ) {}
 
   /** 生成并落盘，返回文件路径 */
@@ -100,6 +102,19 @@ export class ReportService {
       }
     } else {
       L.push('- 本周未批改作文');
+    }
+    L.push('');
+    L.push('## 错题本');
+    if (this.wrongAnswers) {
+      const was = await this.wrongAnswers.load();
+      const newWas = was.filter(w => inWeek(w.date));
+      const openWas = was.filter(w => w.status === '未订正');
+      L.push(`- 本周新增订正 ${newWas.length} 条 · 当前未订正 ${openWas.length} 条`);
+      for (const w of openWas.slice(0, 3)) {
+        L.push(`- 待跟进：【${w.subject}】${w.topic}（${w.myError || w.code}）`);
+      }
+    } else {
+      L.push('- （未启用）');
     }
     L.push('');
     L.push('## 建议卡片');

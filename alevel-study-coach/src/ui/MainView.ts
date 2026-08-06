@@ -11,6 +11,7 @@ import { CaptureModal } from './CaptureModal';
 import { SessionHistoryModal, AttachPickerModal, ImagePickerModal } from './PickerModals';
 import { SuggestionModal, DrillModal } from './InsightModals';
 import { EXPR_LIB_PATH, GRADE_LEDGER_PATH, parseIeltsResult } from '../services/IeltsService';
+import { WRONG_ANSWER_PATH } from '../services/WrongAnswerService';
 import { oxbridgeGuidance } from '../services/ReportService';
 import type { TermEntry } from '../services/TermService';
 import type { ImagePart } from '../types';
@@ -437,6 +438,7 @@ export class MainView extends ItemView {
       if (m.role === 'assistant' && m === this.messages[this.messages.length - 1]) {
         if (this.mode === 'ielts') this.renderIeltsResultPrompt(bubble, m.content);
         else this.renderLogRowPrompt(bubble);
+        this.renderWrongAnswerPrompt(bubble, m.content);
       }
     }
     chatEl.scrollTop = chatEl.scrollHeight;
@@ -625,6 +627,15 @@ export class MainView extends ItemView {
   /** 组装 System Prompt（模板 + 档案 + 未消除 log + 进展 + 引用文档） */
   private async rebuildSystemPrompt(): Promise<void> {
     const extras: string[] = [];
+    // 未订正错题跟进（错题本台账）：让教练遇到相关题目时顺势让学生重做
+    const openWas = await this.plugin.wrongAnswers.open();
+    if (openWas.length) {
+      const lines = openWas.map(w => `- 【${w.subject}】${w.topic}：${w.myError || '（未记错误描述）'}（错因码 ${w.code || '-'}）`);
+      extras.push(
+        '════════ 插件注入：未订正的错题（来自错题本）════════\n' + lines.join('\n') +
+        '\n使用方式：学生来问相关题目/考点时，先让他自己重做一遍这些错题再讨论；不主动占用会话时间逐一清算。',
+      );
+    }
     for (const a of this.attachments) {
       const c = await this.plugin.vaultService.read(a.path);
       if (c) {
@@ -1003,6 +1014,33 @@ export class MainView extends ItemView {
     btns.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
   }
 
+  /** 订正会话：检测回复里的错题 JSON → 确认卡片，入错题本台账 */
+  private renderWrongAnswerPrompt(parent: HTMLElement, reply: string): void {
+    const parsed = extractJson<{ wrongAnswer?: Partial<{ subject: string; topic: string; myError: string; code: string; answerSource: string; status: string }> }>(reply);
+    const w = parsed?.wrongAnswer;
+    if (!w || !w.topic) return;
+
+    const bar = parent.createDiv({ cls: 'asc-logbar' });
+    bar.createSpan({ text: `检测到错题记录：【${w.subject ?? '-'}】${w.topic} · ${w.code ?? '-'} · ${w.status === '未订正' ? '未订正（下次自动跟进）' : '已订正'}` });
+    bar.createEl('div', { text: `我的错误：${w.myError ?? '-'} · 答案基线：${w.answerSource ?? '模型解答（待确认）'}`, cls: 'asc-logrow' });
+    const btns = bar.createDiv();
+    btns.createEl('button', { text: '入错题本', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', async ev => {
+      (ev.target as HTMLElement).setAttr('disabled', 'true');
+      try {
+        const entry = await this.plugin.wrongAnswers.addEntry({
+          subject: w.subject, topic: w.topic, myError: w.myError, code: w.code,
+          answerSource: w.answerSource, status: w.status === '未订正' ? '未订正' : '已订正',
+        });
+        new Notice(entry ? `已入错题本（${entry.id}）${entry.status === '未订正' ? '，下次会话自动跟进' : ''}` : '今日已有同考点记录，未重复登记');
+        bar.remove();
+      } catch (e) {
+        new Notice(`入库失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+        (ev.target as HTMLElement).removeAttribute('disabled');
+      }
+    });
+    btns.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
+  }
+
   /**
    * 存档：把未落盘的消息增量追加到会话文件。
    * 新会话 / 关闭视图 / 点「存档」都会调用，因此不会丢数据也不会重复写。
@@ -1192,11 +1230,27 @@ export class MainView extends ItemView {
       }
     }
 
+    // 错题本（订正会话结题后入库；未订正条目自动注入教练提示词跟进）
+    el.createEl('div', { text: '错题本（订正记录）', cls: 'asc-section-title' });
+    const was = await this.plugin.wrongAnswers.load();
+    if (!was.length) {
+      el.createDiv({ text: '还没有错题记录——教练会话里说「订正这题」+贴题目和你的作答即可。', cls: 'asc-empty' });
+    } else {
+      const wt = el.createEl('table', { cls: 'asc-table' });
+      const whead = wt.createEl('tr');
+      for (const h of ['ID', '日期', '科目', '考点(EN)', '我的错误', '错因码', '答案来源', '状态']) whead.createEl('th', { text: h });
+      for (const w of [...was].reverse()) {
+        const tr = wt.createEl('tr');
+        for (const cell of [w.id, w.date, w.subject, w.topic, w.myError, w.code, w.answerSource, w.status]) tr.createEl('td', { text: cell });
+      }
+    }
+
     const links = el.createDiv({ cls: 'asc-row' });
     links.createEl('button', { text: '打开 error-log.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/error-log.md`));
     links.createEl('button', { text: '批改记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(GRADE_LEDGER_PATH));
     links.createEl('button', { text: '积累库.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(EXPR_LIB_PATH));
     links.createEl('button', { text: '提问记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/提问记录.md`));
+    links.createEl('button', { text: '错题本.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(WRONG_ANSWER_PATH));
     links.createEl('button', { text: '术语清单.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/术语清单.md`));
   }
 
@@ -1260,10 +1314,10 @@ function fmtRemain(ms: number): string {
   return `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
 }
 
-/** 剥离回复里机器用 JSON 块（ieltsResult / sessionTag），其他内容原样保留；导出供测试 */
+/** 剥离回复里机器用 JSON 块（ieltsResult / sessionTag / wrongAnswer），其他内容原样保留；导出供测试 */
 export function stripMachineBlocks(content: string): string {
   return content
-    .replace(/```json\s*[\s\S]*?```/g, block => (/"ieltsResult"|"sessionTag"/.test(block) ? '' : block))
+    .replace(/```json\s*[\s\S]*?```/g, block => (/"ieltsResult"|"sessionTag"|"wrongAnswer"/.test(block) ? '' : block))
     .replace(/\n{3,}/g, '\n\n')
     .trimEnd();
 }

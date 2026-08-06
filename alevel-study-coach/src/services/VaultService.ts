@@ -163,6 +163,15 @@ const GRADE_LEDGER_TEMPLATE = `# 批改记录
 |------|------|------|----|----|----|----|
 `;
 
+const WRONG_ANSWER_TEMPLATE = `# 错题本
+
+> 订正会话结题后自动登记（确认卡片入库）；「未订正」条目会自动注入教练提示词跟进。
+> 答案基线三级来源：学生提供官方答案 → 模型解答经学生验证确认 → 模型解答（待确认，不作定论）。
+
+| ID | 日期 | 科目 | 考点(EN) | 我的错误 | 错因代码 | 答案来源 | 状态 |
+|---|---|---|---|---|---|---|---|
+`;
+
 const EXPR_LIB_TEMPLATE = `# 表达积累库
 
 > 雅思作文批改后自动提取的高分表达（也可手动添加）。
@@ -220,6 +229,7 @@ export class VaultService {
       await this.ensureFile(`${ROOT}/记录/统计分析.md`, STATS_TEMPLATE);
       await this.ensureFile(`${ROOT}/雅思/表达积累库.md`, EXPR_LIB_TEMPLATE);
       await this.ensureFile(`${ROOT}/雅思/批改记录.md`, GRADE_LEDGER_TEMPLATE);
+      await this.ensureFile(`${ROOT}/记录/错题本.md`, WRONG_ANSWER_TEMPLATE);
 
       await this.seedPrompts();
     } catch (e) {

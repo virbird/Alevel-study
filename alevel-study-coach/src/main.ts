@@ -9,6 +9,7 @@ import { PromptAssembler } from './services/PromptAssembler';
 import { InsightEngine } from './services/InsightEngine';
 import { SuggestionService } from './services/SuggestionService';
 import { StatsService } from './services/StatsService';
+import { WrongAnswerService } from './services/WrongAnswerService';
 import { TermListService } from './services/TermService';
 import { IeltsService } from './services/IeltsService';
 import { ExpressionService } from './services/ExpressionService';
@@ -76,6 +77,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   stats!: StatsService;
   ielts!: IeltsService;
   expressions!: ExpressionService;
+  wrongAnswers!: WrongAnswerService;
   reports!: ReportService;
   assembler!: PromptAssembler;
   /** 当前批改任务（后台运行，雅思页签展示） */
@@ -98,10 +100,11 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     this.terms = new TermListService(this.vaultService);
     this.ielts = new IeltsService(this.vaultService);
     this.expressions = new ExpressionService(this.vaultService);
+    this.wrongAnswers = new WrongAnswerService(this.vaultService);
     this.engine = new InsightEngine(this.vaultService);
     this.suggestions = new SuggestionService(this.vaultService);
     this.stats = new StatsService(this.vaultService, this.engine);
-    this.reports = new ReportService(this.vaultService, this.errorLog, this.engine, this.terms, this.ielts, this.suggestions);
+    this.reports = new ReportService(this.vaultService, this.errorLog, this.engine, this.terms, this.ielts, this.suggestions, this.wrongAnswers);
     this.assembler = new PromptAssembler(
       this.vaultService, this.profiles, this.errorLog, this.progress,
       this.weakImpressions, this.practiceFocus, this.stats,
