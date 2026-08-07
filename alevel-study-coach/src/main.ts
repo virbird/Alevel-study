@@ -166,6 +166,13 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     workspace.revealLeaf(leaf);
   }
 
+  /** 语音诊断日志（设置页链路测试等均可调用）：追加到 雅思/口语/语音日志.md */
+  async voiceDiag(stage: string, detail: string): Promise<void> {
+    try {
+      await this.vaultService.append(`${SPEAKING_REPORT_DIR}/语音日志.md`, formatVoiceLogLine('INFO', stage, detail));
+    } catch { /* 日志失败不阻塞 */ }
+  }
+
   /** 获取阿里云 NLS Token（带缓存）；未配置密钥时报错，调用方退化为文字模式 */
   async getNlsToken(): Promise<string> {
     const v = await this.loadVoiceConfig();

@@ -1,6 +1,7 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import type ALevelStudyCoachPlugin from '../main';
 import { LlmClient } from '../llm/LlmClient';
+import { aliyunAsr, aliyunTts } from '../voice/AliyunNls';
 
 export class StudyCoachSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: ALevelStudyCoachPlugin) {
@@ -237,6 +238,46 @@ export class StudyCoachSettingTab extends PluginSettingTab {
             new Notice(`❌ 语音连接失败：${e instanceof Error ? e.message : String(e)}`, 10000);
           } finally {
             b.setButtonText('测试连接').setDisabled(false);
+          }
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName('链路诊断')
+      .setDesc('在插件环境内直接测 ASR/TTS 的 WebSocket 链路（不需要麦克风），过程与结果写入 雅思/口语/语音日志.md')
+      .addButton(b =>
+        b.setButtonText('识别链路测试').onClick(async () => {
+          b.setButtonText('测试中…').setDisabled(true);
+          try {
+            const vcfg = await this.plugin.loadVoiceConfig();
+            const token = await this.plugin.getNlsToken();
+            const silence = new ArrayBuffer(32000); // 1 秒 16k 16bit 静音
+            const text = await aliyunAsr(silence, {
+              token, appKey: vcfg.aliyunAppKey,
+              onLog: (s, d) => void this.plugin.voiceDiag(s, d),
+            });
+            new Notice(`✅ 识别链路正常（静音识别结果：${text || '空'}）`, 6000);
+          } catch (e) {
+            new Notice(`❌ ${e instanceof Error ? e.message : String(e)}（详见 雅思/口语/语音日志.md）`, 10000);
+          } finally {
+            b.setButtonText('识别链路测试').setDisabled(false);
+          }
+        }),
+      )
+      .addButton(b =>
+        b.setButtonText('合成链路测试').onClick(async () => {
+          b.setButtonText('测试中…').setDisabled(true);
+          try {
+            const vcfg = await this.plugin.loadVoiceConfig();
+            const token = await this.plugin.getNlsToken();
+            const audio = await aliyunTts('Hello, this is a connection test.', { token, appKey: vcfg.aliyunAppKey, voice: vcfg.ttsVoice });
+            void this.plugin.voiceDiag('TTS 链路测试', `合成成功 ${audio.byteLength} 字节 voice=${vcfg.ttsVoice}`);
+            new Notice(`✅ 合成链路正常（${audio.byteLength} 字节音频）`, 6000);
+          } catch (e) {
+            void this.plugin.voiceDiag('TTS 链路测试', `失败：${e instanceof Error ? e.message : String(e)}`);
+            new Notice(`❌ ${e instanceof Error ? e.message : String(e)}（详见 雅思/口语/语音日志.md）`, 10000);
+          } finally {
+            b.setButtonText('合成链路测试').setDisabled(false);
           }
         }),
       );

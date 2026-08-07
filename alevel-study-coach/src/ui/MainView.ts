@@ -539,7 +539,10 @@ export class MainView extends ItemView {
               return;
             }
             const token = await this.plugin.getNlsToken();
-            const text = await aliyunAsr(res.pcm.buffer as ArrayBuffer, { token, appKey: vcfg.aliyunAppKey });
+            const text = await aliyunAsr(res.pcm.buffer as ArrayBuffer, {
+              token, appKey: vcfg.aliyunAppKey,
+              onLog: (s, d) => void this.voiceLog('INFO', s, d),
+            });
             hintEl.setText(HINT_DEFAULT);
             if (!text.trim()) {
               void this.voiceLog('WARN', '识别为空', `音频 ${res.seconds.toFixed(1)} 秒但无识别结果（检查麦克风音量/环境）`);
