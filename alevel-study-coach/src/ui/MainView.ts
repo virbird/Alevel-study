@@ -513,7 +513,9 @@ export class MainView extends ItemView {
             micBtn.setText('⏺');
             hintEl.setText('🎤 录音中…松开发送');
           } catch (err) {
-            new Notice(`录音启动失败：${err instanceof Error ? err.message : String(err)}（请检查麦克风权限）`, 8000);
+            const msg = err instanceof Error ? err.message : String(err);
+            void this.voiceLog('ERROR', '录音启动', msg);
+            new Notice(`录音启动失败：${msg}（请检查麦克风权限）`, 8000);
           }
         })();
       });
@@ -527,9 +529,11 @@ export class MainView extends ItemView {
         void (async () => {
           try {
             const res = await rec.stop();
+            void this.voiceLog('INFO', '录音完成', `${res.seconds.toFixed(1)} 秒 · PCM ${(res.pcm.length * 2 / 1024).toFixed(0)} KB`);
             if (this.plugin.settings.voice.saveRecordings) void this.saveRecording(res.wav);
             if (res.seconds < 0.5) {
               hintEl.setText(HINT_DEFAULT);
+              void this.voiceLog('WARN', '录音过短', `${res.seconds.toFixed(2)} 秒，已拦截`);
               new Notice('录音太短，请按住说话后再松开');
               return;
             }
@@ -537,14 +541,18 @@ export class MainView extends ItemView {
             const text = await aliyunAsr(res.pcm.buffer as ArrayBuffer, { token, appKey: this.plugin.settings.voice.aliyunAppKey });
             hintEl.setText(HINT_DEFAULT);
             if (!text.trim()) {
+              void this.voiceLog('WARN', '识别为空', `音频 ${res.seconds.toFixed(1)} 秒但无识别结果（检查麦克风音量/环境）`);
               new Notice('未识别到内容，请再试一次');
               return;
             }
+            void this.voiceLog('INFO', '识别成功', `${text.length} 字`);
             input.value = text;
             doSend();
           } catch (err) {
             hintEl.setText(HINT_DEFAULT);
-            new Notice(`语音失败：${err instanceof Error ? err.message : String(err)}`, 8000);
+            const msg = err instanceof Error ? err.message : String(err);
+            void this.voiceLog('ERROR', '语音失败', msg);
+            new Notice(`语音失败：${msg}（详见 雅思/口语/语音日志.md）`, 8000);
           }
         })();
       };
@@ -1219,7 +1227,9 @@ export class MainView extends ItemView {
         this.ttsSource = null;
       }
     } catch (e) {
-      new Notice(`播报失败：${e instanceof Error ? e.message : String(e)}`, 6000);
+      const msg = e instanceof Error ? e.message : String(e);
+      void this.voiceLog('ERROR', 'TTS 播报', msg);
+      new Notice(`播报失败：${msg}（详见 雅思/口语/语音日志.md）`, 6000);
     } finally {
       if (ctx) void ctx.close();
       this.ttsSource = null;
@@ -1244,6 +1254,13 @@ export class MainView extends ItemView {
       const path = `${SPEAKING_REPORT_DIR}/rec-${todayStr()}-${timeStr()}.wav`;
       await this.app.vault.adapter.writeBinary(path, wav);
     } catch { /* 附件保存失败不影响主流程 */ }
+  }
+
+  /** 语音诊断日志：追加到 雅思/口语/语音日志.md（排障用，永不阻塞主流程） */
+  private async voiceLog(level: 'INFO' | 'WARN' | 'ERROR', stage: string, detail = ''): Promise<void> {
+    try {
+      await this.plugin.vaultService.append(`${SPEAKING_REPORT_DIR}/语音日志.md`, formatVoiceLogLine(level, stage, detail));
+    } catch { /* 日志失败不影响主流程 */ }
   }
 
   /**
@@ -1756,6 +1773,12 @@ function timeStr(): string {
 function fmtRemain(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
   return `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
+}
+
+/** 语音诊断日志行格式（导出供测试）：[级别] HH:MM:SS · 阶段 · 详情 */
+export function formatVoiceLogLine(level: 'INFO' | 'WARN' | 'ERROR', stage: string, detail: string, d = new Date()): string {
+  const t = d.toTimeString().slice(0, 8);
+  return `[${level}] ${t} · ${stage}${detail ? ` · ${detail}` : ''}`;
 }
 
 /** 剥离回复里机器用 JSON 块（ieltsResult / sessionTag / wrongAnswer），其他内容原样保留；导出供测试 */

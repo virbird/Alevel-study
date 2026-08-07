@@ -2,6 +2,7 @@
 import { section, check, eq } from '../harness';
 import { encodeWav, percentEncode, hmacSha1Base64, buildAliyunSignature, uuidHex, splitForTts } from '../../src/voice/audioUtils';
 import { fetchAliyunToken } from '../../src/voice/AliyunNls';
+import { formatVoiceLogLine } from '../../src/ui/MainView';
 
 export async function run(): Promise<void> {
   section('UT: encodeWav');
@@ -68,4 +69,9 @@ export async function run(): Promise<void> {
     errMsg = e instanceof Error ? e.message : String(e);
   }
   check('失败时抛错带原因', errMsg.includes('InvalidAccessKeyId'));
+
+  section('UT: formatVoiceLogLine');
+  const d = new Date('2026-08-07T14:03:05');
+  eq('日志行格式', formatVoiceLogLine('ERROR', '识别失败', 'appkey not exist', d), '[ERROR] 14:03:05 · 识别失败 · appkey not exist');
+  eq('空详情省略尾段', formatVoiceLogLine('INFO', '开始', '', d), '[INFO] 14:03:05 · 开始');
 }

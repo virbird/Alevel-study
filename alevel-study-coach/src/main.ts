@@ -11,12 +11,12 @@ import { SuggestionService } from './services/SuggestionService';
 import { StatsService } from './services/StatsService';
 import { WrongAnswerService } from './services/WrongAnswerService';
 import { ConceptMapService } from './services/ConceptMapService';
-import { SpeakingService } from './services/SpeakingService';
+import { SpeakingService, SPEAKING_REPORT_DIR } from './services/SpeakingService';
 import { TermListService } from './services/TermService';
 import { IeltsService } from './services/IeltsService';
 import { ExpressionService } from './services/ExpressionService';
 import { ReportService } from './services/ReportService';
-import { MainView, VIEW_TYPE } from './ui/MainView';
+import { MainView, VIEW_TYPE, formatVoiceLogLine } from './ui/MainView';
 import { StudyCoachSettingTab } from './ui/SettingsTab';
 import { OnboardModal } from './ui/OnboardModal';
 import { CaptureModal } from './ui/CaptureModal';
@@ -172,10 +172,18 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     }
     const now = Math.floor(Date.now() / 1000);
     if (this.voiceToken && this.voiceToken.expireTime - 600 > now) return this.voiceToken.token;
-    this.voiceToken = await fetchAliyunToken(v.aliyunAccessKeyId, v.aliyunAccessKeySecret, async url => {
-      const r = await requestUrl({ url, method: 'GET', throw: false });
-      return { status: r.status, text: r.text };
-    });
+    try {
+      this.voiceToken = await fetchAliyunToken(v.aliyunAccessKeyId, v.aliyunAccessKeySecret, async url => {
+        const r = await requestUrl({ url, method: 'GET', throw: false });
+        return { status: r.status, text: r.text };
+      });
+    } catch (e) {
+      // 诊断日志：Token 失败同步落盘，便于排障（不阻塞报错上抛）
+      try {
+        await this.vaultService.append(`${SPEAKING_REPORT_DIR}/语音日志.md`, formatVoiceLogLine('ERROR', 'Token 获取', e instanceof Error ? e.message : String(e)));
+      } catch { /* 日志失败不影响报错 */ }
+      throw e;
+    }
     return this.voiceToken.token;
   }
 
