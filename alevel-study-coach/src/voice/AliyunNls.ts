@@ -112,7 +112,8 @@ export function aliyunAsr(pcm: ArrayBuffer, cfg: AsrOptions): Promise<string> {
       const pump = (): void => {
         if (settled || ws.readyState !== WebSocket.OPEN) return;
         if (i >= bytes.length) {
-          ws.send(JSON.stringify({ header: { message_id: uuidHex(), task_id: taskId, namespace: 'SpeechRecognizer', name: 'StopRecognition' } }));
+          // 注意：StopRecognition 也必须带 appkey，否则网关报 MESSAGE_INVALID:Missing message appkey
+          ws.send(JSON.stringify({ header: { message_id: uuidHex(), task_id: taskId, namespace: 'SpeechRecognizer', name: 'StopRecognition', appkey: cfg.appKey } }));
           return;
         }
         ws.send(bytes.slice(i, i + CHUNK));
