@@ -1,5 +1,5 @@
-import { Notice, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
-import type { LlmSettings } from './types';
+import { Notice, Plugin, TFile, WorkspaceLeaf, requestUrl } from 'obsidian';
+import type { LlmSettings, VoiceSettings } from './types';
 import { LlmClient } from './llm/LlmClient';
 import { VaultService } from './services/VaultService';
 import { ProfileService } from './services/ProfileService';
@@ -22,6 +22,7 @@ import { OnboardModal } from './ui/OnboardModal';
 import { CaptureModal } from './ui/CaptureModal';
 import { ExpressionDrillModal, GradeConfirmModal } from './ui/IeltsModals';
 import { todayStr, daysBetween, isoWeekKey } from './utils/date';
+import { fetchAliyunToken } from './voice/AliyunNls';
 
 export interface CoachPluginSettings {
   llm: LlmSettings;
@@ -40,6 +41,8 @@ export interface CoachPluginSettings {
   contextWindow: number;
   /** 自动压缩阈值（百分比，用量达到即发送前自动压缩，默认 80） */
   compressThreshold: number;
+  /** 语音训练（阿里云 NLS；未配置时口语训练为文字模式） */
+  voice: VoiceSettings;
 }
 
 /** 批改任务状态：后台运行，雅思页签内展示进度与结果，不阻塞其他操作 */
@@ -62,6 +65,7 @@ const DEFAULT_SETTINGS: CoachPluginSettings = {
   lastCoachMode: 'drill',
   contextWindow: 128000,
   compressThreshold: 80,
+  voice: { enabled: false, aliyunAccessKeyId: '', aliyunAccessKeySecret: '', aliyunAppKey: '', ttsVoice: 'annie', autoPlayTts: true, saveRecordings: false },
 };
 
 export default class ALevelStudyCoachPlugin extends Plugin {
@@ -82,6 +86,8 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   wrongAnswers!: WrongAnswerService;
   conceptMap!: ConceptMapService;
   speaking!: SpeakingService;
+  /** 阿里云 NLS Token 缓存（有效期约 24h，到期前 10 分钟自动续） */
+  voiceToken: { token: string; expireTime: number } | null = null;
   reports!: ReportService;
   assembler!: PromptAssembler;
   /** 当前批改任务（后台运行，雅思页签展示） */
@@ -158,10 +164,32 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     workspace.revealLeaf(leaf);
   }
 
+  /** 获取阿里云 NLS Token（带缓存）；未配置密钥时报错，调用方退化为文字模式 */
+  async getNlsToken(): Promise<string> {
+    const v = this.settings.voice;
+    if (!v.aliyunAccessKeyId || !v.aliyunAccessKeySecret || !v.aliyunAppKey) {
+      throw new Error('语音未配置：请在设置页「语音训练」填阿里云 AccessKey 与 AppKey');
+    }
+    const now = Math.floor(Date.now() / 1000);
+    if (this.voiceToken && this.voiceToken.expireTime - 600 > now) return this.voiceToken.token;
+    this.voiceToken = await fetchAliyunToken(v.aliyunAccessKeyId, v.aliyunAccessKeySecret, async url => {
+      const r = await requestUrl({ url, method: 'GET', throw: false });
+      return { status: r.status, text: r.text };
+    });
+    return this.voiceToken.token;
+  }
+
+  /** 语音是否可用（开启 + 密钥齐备） */
+  voiceReady(): boolean {
+    const v = this.settings.voice;
+    return v.enabled && Boolean(v.aliyunAccessKeyId && v.aliyunAccessKeySecret && v.aliyunAppKey);
+  }
+
   async loadSettings(): Promise<void> {
     const raw = ((await this.loadData()) ?? {}) as Record<string, unknown>;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, raw);
     this.settings.llm = Object.assign({}, DEFAULT_SETTINGS.llm, this.settings.llm);
+    this.settings.voice = Object.assign({}, DEFAULT_SETTINGS.voice, this.settings.voice);
     // 候选模型列表：按 provider 分开存；旧版全局字符串迁移到两个 provider
     const mc = raw.modelCandidates;
     if (typeof mc === 'string') {

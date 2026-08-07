@@ -13,7 +13,10 @@ import { SuggestionModal, DrillModal, OfflineFeedbackModal } from './InsightModa
 import { EXPR_LIB_PATH, GRADE_LEDGER_PATH, parseIeltsResult } from '../services/IeltsService';
 import { WRONG_ANSWER_PATH } from '../services/WrongAnswerService';
 import { CONCEPT_MAP_PATH } from '../services/ConceptMapService';
-import { SPEAKING_LEDGER_PATH, parseSpeakingScores, parseSpeakingExpressions, parseSpeakingWrongs, SpeakingService, fmtBand } from '../services/SpeakingService';
+import { SPEAKING_LEDGER_PATH, SPEAKING_REPORT_DIR, parseSpeakingScores, parseSpeakingExpressions, parseSpeakingWrongs, SpeakingService, fmtBand } from '../services/SpeakingService';
+import { AudioRecorder } from '../voice/AudioRecorder';
+import { aliyunAsr, aliyunTts } from '../voice/AliyunNls';
+import { splitForTts } from '../voice/audioUtils';
 import { oxbridgeGuidance } from '../services/ReportService';
 import type { TermEntry } from '../services/TermService';
 import type { ImagePart } from '../types';
@@ -56,6 +59,13 @@ export class MainView extends ItemView {
   private startingSession = false;
   /** 上下文压缩进行中（耗时操作，需明确提示） */
   private compressing = false;
+  /** 口语训练：TTS 播报状态（可打断） */
+  private ttsPlaying = false;
+  private ttsStopped = false;
+  private ttsSource: AudioBufferSourceNode | null = null;
+  /** 口语训练：按住说话录音状态 */
+  private recording = false;
+  private recorder: AudioRecorder | null = null;
   /** 线下练习反馈待确认结果（复习页签确认卡片） */
   private pendingFeedback: ReviewFeedback | null = null;
   /** 复习/记录共用的展开状态（默认：有内容的区展开、空区收起） */
@@ -477,8 +487,70 @@ export class MainView extends ItemView {
         this.render();
       }).open(),
     );
+    // 口语 + 语音：TTS 播报中显示停止按钮（🎤 按钮在快捷键提示后创建，复用 hintEl 显示状态）
+    if (this.mode === 'speaking' && this.ttsPlaying) {
+      const stopBtn = actions.createEl('button', { text: '⏹ 停止播报', cls: 'asc-btn asc-btn-small' });
+      stopBtn.addEventListener('click', () => this.stopTts());
+    }
     const isMac = navigator.platform.toUpperCase().includes('MAC');
-    actions.createSpan({ text: `${isMac ? '⌘' : 'Ctrl'}↩ 发送`, cls: 'asc-input-hint' });
+    const hintEl = actions.createSpan({ text: `${isMac ? '⌘' : 'Ctrl'}↩ 发送`, cls: 'asc-input-hint' });
+    const HINT_DEFAULT = hintEl.getText();
+    // 口语 + 语音：🎤 按住说话（松开识别并自动发送）
+    if (this.mode === 'speaking') {
+      const micBtn = actions.createEl('button', { text: '🎤', cls: 'asc-btn asc-btn-icon' });
+      const ready = this.plugin.voiceReady();
+      micBtn.setAttr('title', ready ? '按住说话，松开识别并发送' : '语音未配置：设置 → 语音训练（当前为文字模式）');
+      micBtn.disabled = !ready || this.busy;
+      micBtn.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        if (this.recording || this.busy || !ready) return;
+        void (async () => {
+          try {
+            const rec = new AudioRecorder();
+            await rec.start();
+            this.recorder = rec;
+            this.recording = true;
+            micBtn.setText('⏺');
+            hintEl.setText('🎤 录音中…松开发送');
+          } catch (err) {
+            new Notice(`录音启动失败：${err instanceof Error ? err.message : String(err)}（请检查麦克风权限）`, 8000);
+          }
+        })();
+      });
+      const stopVoice = (): void => {
+        if (!this.recording || !this.recorder) return;
+        this.recording = false;
+        const rec = this.recorder;
+        this.recorder = null;
+        micBtn.setText('🎤');
+        hintEl.setText('识别中…');
+        void (async () => {
+          try {
+            const res = await rec.stop();
+            if (this.plugin.settings.voice.saveRecordings) void this.saveRecording(res.wav);
+            if (res.seconds < 0.5) {
+              hintEl.setText(HINT_DEFAULT);
+              new Notice('录音太短，请按住说话后再松开');
+              return;
+            }
+            const token = await this.plugin.getNlsToken();
+            const text = await aliyunAsr(res.pcm.buffer as ArrayBuffer, { token, appKey: this.plugin.settings.voice.aliyunAppKey });
+            hintEl.setText(HINT_DEFAULT);
+            if (!text.trim()) {
+              new Notice('未识别到内容，请再试一次');
+              return;
+            }
+            input.value = text;
+            doSend();
+          } catch (err) {
+            hintEl.setText(HINT_DEFAULT);
+            new Notice(`语音失败：${err instanceof Error ? err.message : String(err)}`, 8000);
+          }
+        })();
+      };
+      micBtn.addEventListener('pointerup', stopVoice);
+      micBtn.addEventListener('pointerleave', stopVoice);
+    }
     const sendBtn = actions.createEl('button', { text: this.busy ? '回复中…' : '发送', cls: 'asc-btn asc-btn-cta' });
     sendBtn.disabled = this.busy || !this.systemPrompt || this.timerDeadline > Date.now();
     const doSend = () => {
@@ -782,6 +854,10 @@ export class MainView extends ItemView {
         return;
       }
       await this.handleReplySideEffects(raw);
+      // 口语 + 语音已配置：考官回复自动播报（可随时打断；失败不影响文字流）
+      if (this.mode === 'speaking' && this.plugin.voiceReady() && this.plugin.settings.voice.autoPlayTts) {
+        void this.playReplyTts(raw);
+      }
     } catch (e) {
       new Notice(`请求失败：${e instanceof Error ? e.message : String(e)}`, 10000);
       this.messages.pop(); // 撤回未成功的用户消息，方便重试
@@ -1112,6 +1188,62 @@ export class MainView extends ItemView {
       }
     });
     row.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
+  }
+
+  /** 口语训练：按句合成并播报 AI 回复（可打断；失败不影响文字流） */
+  private async playReplyTts(raw: string): Promise<void> {
+    const sents = splitForTts(stripMachineBlocks(raw));
+    if (!sents.length) return;
+    let ctx: AudioContext | null = null;
+    try {
+      const token = await this.plugin.getNlsToken();
+      const cfg = { token, appKey: this.plugin.settings.voice.aliyunAppKey, voice: this.plugin.settings.voice.ttsVoice };
+      ctx = new AudioContext();
+      this.ttsPlaying = true;
+      this.ttsStopped = false;
+      this.render();
+      for (const s of sents) {
+        if (this.ttsStopped) break;
+        const audio = await aliyunTts(s, cfg);
+        if (this.ttsStopped) break;
+        const buf = await ctx.decodeAudioData(audio);
+        await new Promise<void>(resolve => {
+          if (!ctx) { resolve(); return; }
+          const src = ctx.createBufferSource();
+          this.ttsSource = src;
+          src.buffer = buf;
+          src.connect(ctx.destination);
+          src.onended = (): void => resolve();
+          src.start();
+        });
+        this.ttsSource = null;
+      }
+    } catch (e) {
+      new Notice(`播报失败：${e instanceof Error ? e.message : String(e)}`, 6000);
+    } finally {
+      if (ctx) void ctx.close();
+      this.ttsSource = null;
+      this.ttsPlaying = false;
+      this.render();
+    }
+  }
+
+  /** 打断当前播报（已合成的未播句全部放弃） */
+  private stopTts(): void {
+    this.ttsStopped = true;
+    try {
+      this.ttsSource?.stop();
+    } catch { /* 已停 */ }
+    this.ttsPlaying = false;
+    this.render();
+  }
+
+  /** 保存录音到 雅思/口语/（可选附件；失败不影响主流程） */
+  private async saveRecording(wav: ArrayBuffer): Promise<void> {
+    try {
+      const path = `${SPEAKING_REPORT_DIR}/rec-${todayStr()}-${timeStr()}.wav`;
+      await this.app.vault.adapter.writeBinary(path, wav);
+    } catch { /* 附件保存失败不影响主流程 */ }
   }
 
   /**

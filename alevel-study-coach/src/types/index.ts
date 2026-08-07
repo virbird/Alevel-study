@@ -6,6 +6,20 @@ export interface LlmSettings {
   model: string;
 }
 
+/** 语音训练设置（阿里云 NLS；未配置时口语训练退化为文字模式） */
+export interface VoiceSettings {
+  enabled: boolean;
+  aliyunAccessKeyId: string;
+  aliyunAccessKeySecret: string;
+  aliyunAppKey: string;
+  /** TTS 音色：annie 英音女声 / abby 美音女声 / andy 美音男声 */
+  ttsVoice: string;
+  /** 考官回复自动播报（可随时打断） */
+  autoPlayTts: boolean;
+  /** 录音保存到 雅思/口语/（可选附件，默认关） */
+  saveRecordings: boolean;
+}
+
 export interface ImagePart {
   mimeType: string;   // image/png | image/jpeg | image/gif | image/webp
   data: string;       // base64
