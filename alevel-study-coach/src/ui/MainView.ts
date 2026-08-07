@@ -199,7 +199,7 @@ export class MainView extends ItemView {
     this.bodyEl = root.createDiv({ cls: 'asc-body' });
     switch (this.tab) {
       case 'home': void this.renderDashboard(); break;
-      case 'coach': this.renderCoach(); break;
+      case 'coach': void this.renderCoach(); break;
       case 'records': void this.renderRecords(); break;
       case 'review': void this.renderReview(); break;
     }
@@ -359,7 +359,7 @@ export class MainView extends ItemView {
   }
 
   // ─── 教练 ────────────────────────────────────────────────
-  private renderCoach(): void {
+  private async renderCoach(): Promise<void> {
     const el = this.bodyEl;
 
     const bar = el.createDiv({ cls: 'asc-coach-bar' });
@@ -498,7 +498,7 @@ export class MainView extends ItemView {
     // 口语 + 语音：🎤 按住说话（松开识别并自动发送）
     if (this.mode === 'speaking') {
       const micBtn = actions.createEl('button', { text: '🎤', cls: 'asc-btn asc-btn-icon' });
-      const ready = this.plugin.voiceReady();
+      const ready = await this.plugin.voiceReady();
       micBtn.setAttr('title', ready ? '按住说话，松开识别并发送' : '语音未配置：设置 → 语音训练（当前为文字模式）');
       micBtn.disabled = !ready || this.busy;
       micBtn.addEventListener('pointerdown', e => {
@@ -528,9 +528,10 @@ export class MainView extends ItemView {
         hintEl.setText('识别中…');
         void (async () => {
           try {
+            const vcfg = await this.plugin.loadVoiceConfig();
             const res = await rec.stop();
-            void this.voiceLog('INFO', '录音完成', `${res.seconds.toFixed(1)} 秒 · PCM ${(res.pcm.length * 2 / 1024).toFixed(0)} KB`);
-            if (this.plugin.settings.voice.saveRecordings) void this.saveRecording(res.wav);
+            void this.voiceLog('INFO', '录音完成', `${res.seconds.toFixed(1)} 秒 · PCM ${(res.pcm.length * 2 / 1024).toFixed(0)} KB · appKey=${vcfg.aliyunAppKey ? '已配置' : '空'}`);
+            if (vcfg.saveRecordings) void this.saveRecording(res.wav);
             if (res.seconds < 0.5) {
               hintEl.setText(HINT_DEFAULT);
               void this.voiceLog('WARN', '录音过短', `${res.seconds.toFixed(2)} 秒，已拦截`);
@@ -538,7 +539,7 @@ export class MainView extends ItemView {
               return;
             }
             const token = await this.plugin.getNlsToken();
-            const text = await aliyunAsr(res.pcm.buffer as ArrayBuffer, { token, appKey: this.plugin.settings.voice.aliyunAppKey });
+            const text = await aliyunAsr(res.pcm.buffer as ArrayBuffer, { token, appKey: vcfg.aliyunAppKey });
             hintEl.setText(HINT_DEFAULT);
             if (!text.trim()) {
               void this.voiceLog('WARN', '识别为空', `音频 ${res.seconds.toFixed(1)} 秒但无识别结果（检查麦克风音量/环境）`);
@@ -863,8 +864,9 @@ export class MainView extends ItemView {
       }
       await this.handleReplySideEffects(raw);
       // 口语 + 语音已配置：考官回复自动播报（可随时打断；失败不影响文字流）
-      if (this.mode === 'speaking' && this.plugin.voiceReady() && this.plugin.settings.voice.autoPlayTts) {
-        void this.playReplyTts(raw);
+      if (this.mode === 'speaking' && (await this.plugin.voiceReady())) {
+        const vcfg = await this.plugin.loadVoiceConfig();
+        if (vcfg.autoPlayTts) void this.playReplyTts(raw);
       }
     } catch (e) {
       new Notice(`请求失败：${e instanceof Error ? e.message : String(e)}`, 10000);
@@ -1204,8 +1206,9 @@ export class MainView extends ItemView {
     if (!sents.length) return;
     let ctx: AudioContext | null = null;
     try {
+      const vcfg = await this.plugin.loadVoiceConfig();
       const token = await this.plugin.getNlsToken();
-      const cfg = { token, appKey: this.plugin.settings.voice.aliyunAppKey, voice: this.plugin.settings.voice.ttsVoice };
+      const cfg = { token, appKey: vcfg.aliyunAppKey, voice: vcfg.ttsVoice };
       ctx = new AudioContext();
       this.ttsPlaying = true;
       this.ttsStopped = false;

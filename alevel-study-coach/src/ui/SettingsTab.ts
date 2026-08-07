@@ -179,7 +179,7 @@ export class StudyCoachSettingTab extends PluginSettingTab {
     // ── 语音训练（阿里云 NLS；口语训练的按住说话/考官播报）──
     containerEl.createEl('h2', { text: '语音训练（阿里云）' });
     containerEl.createEl('p', {
-      text: '口语训练支持按住说话（ASR）与考官播报（TTS）。密钥仅保存在本机插件配置；不填则口语训练保持文字模式。建议为语音功能单独建低额度 AccessKey。',
+      text: '口语训练支持按住说话（ASR）与考官播报（TTS）。配置存于 vault 的 雅思/口语/voice.json（会随 vault 同步到其他设备，介意请勿同步该文件）；不填则口语训练保持文字模式。建议为语音功能单独建低额度 AccessKey。',
       cls: 'setting-item-description',
     });
     const voice = this.plugin.settings.voice;
@@ -187,41 +187,41 @@ export class StudyCoachSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName('启用语音')
       .setDesc('口语科目发送框出现 🎤 按住说话；考官回复可播报（P 维度评分待 P5c 发音评测）')
-      .addToggle(t => t.setValue(voice.enabled).onChange(async v => { voice.enabled = v; await this.plugin.saveSettings(); }));
+      .addToggle(t => t.setValue(voice.enabled).onChange(async v => { voice.enabled = v; (await this.plugin.saveSettings(), await this.plugin.saveVoiceConfig()); }));
 
     new Setting(containerEl)
       .setName('AccessKey ID')
-      .addText(t => t.setValue(voice.aliyunAccessKeyId).onChange(async v => { voice.aliyunAccessKeyId = v.trim(); await this.plugin.saveSettings(); }));
+      .addText(t => t.setValue(voice.aliyunAccessKeyId).onChange(async v => { voice.aliyunAccessKeyId = v.trim(); (await this.plugin.saveSettings(), await this.plugin.saveVoiceConfig()); }));
 
     new Setting(containerEl)
       .setName('AccessKey Secret')
       .addText(t => {
         t.inputEl.type = 'password';
-        t.setValue(voice.aliyunAccessKeySecret).onChange(async v => { voice.aliyunAccessKeySecret = v.trim(); await this.plugin.saveSettings(); });
+        t.setValue(voice.aliyunAccessKeySecret).onChange(async v => { voice.aliyunAccessKeySecret = v.trim(); (await this.plugin.saveSettings(), await this.plugin.saveVoiceConfig()); });
       });
 
     new Setting(containerEl)
       .setName('智能语音 AppKey')
       .setDesc('阿里云控制台「智能语音交互」项目的 Appkey')
-      .addText(t => t.setValue(voice.aliyunAppKey).onChange(async v => { voice.aliyunAppKey = v.trim(); await this.plugin.saveSettings(); }));
+      .addText(t => t.setValue(voice.aliyunAppKey).onChange(async v => { voice.aliyunAppKey = v.trim(); (await this.plugin.saveSettings(), await this.plugin.saveVoiceConfig()); }));
 
     new Setting(containerEl)
       .setName('考官音色')
       .setDesc('TTS 播报声音')
       .addDropdown(d =>
         d.addOption('annie', 'annie（英音女声）').addOption('abby', 'abby（美音女声）').addOption('andy', 'andy（美音男声）')
-          .setValue(voice.ttsVoice).onChange(async v => { voice.ttsVoice = v; await this.plugin.saveSettings(); }),
+          .setValue(voice.ttsVoice).onChange(async v => { voice.ttsVoice = v; (await this.plugin.saveSettings(), await this.plugin.saveVoiceConfig()); }),
       );
 
     new Setting(containerEl)
       .setName('自动播报考官回复')
       .setDesc('口语会话中 AI 回复完成后自动朗读（可随时点「停止播报」打断）')
-      .addToggle(t => t.setValue(voice.autoPlayTts).onChange(async v => { voice.autoPlayTts = v; await this.plugin.saveSettings(); }));
+      .addToggle(t => t.setValue(voice.autoPlayTts).onChange(async v => { voice.autoPlayTts = v; (await this.plugin.saveSettings(), await this.plugin.saveVoiceConfig()); }));
 
     new Setting(containerEl)
       .setName('保存录音')
       .setDesc('每次说话的录音存到 雅思/口语/（WAV 附件，默认关，避免 vault 膨胀）')
-      .addToggle(t => t.setValue(voice.saveRecordings).onChange(async v => { voice.saveRecordings = v; await this.plugin.saveSettings(); }));
+      .addToggle(t => t.setValue(voice.saveRecordings).onChange(async v => { voice.saveRecordings = v; (await this.plugin.saveSettings(), await this.plugin.saveVoiceConfig()); }));
 
     new Setting(containerEl)
       .setName('连接测试')

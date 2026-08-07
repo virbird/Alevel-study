@@ -1,7 +1,7 @@
 import { Notice, Plugin, TFile, WorkspaceLeaf, requestUrl } from 'obsidian';
 import type { LlmSettings, VoiceSettings } from './types';
 import { LlmClient } from './llm/LlmClient';
-import { VaultService } from './services/VaultService';
+import { VaultService, ROOT } from './services/VaultService';
 import { ProfileService } from './services/ProfileService';
 import { ErrorLogService } from './services/ErrorLogService';
 import { QuestionLogService, ProgressService, WeakImpressionService, PracticeFocusService } from './services/QuestionLogService';
@@ -101,6 +101,8 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     await this.loadSettings();
 
     this.vaultService = new VaultService(this.app, this.manifest.dir ?? '');
+    // 语音配置以 vault 内 voice.json 为准（直读存储，根治内存/文件不同步导致的密钥丢失）
+    this.settings.voice = await this.loadVoiceConfig();
     this.profiles = new ProfileService(this.vaultService);
     this.errorLog = new ErrorLogService(this.vaultService);
     this.questionLog = new QuestionLogService(this.vaultService);
@@ -166,7 +168,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
 
   /** 获取阿里云 NLS Token（带缓存）；未配置密钥时报错，调用方退化为文字模式 */
   async getNlsToken(): Promise<string> {
-    const v = this.settings.voice;
+    const v = await this.loadVoiceConfig();
     if (!v.aliyunAccessKeyId || !v.aliyunAccessKeySecret || !v.aliyunAppKey) {
       throw new Error('语音未配置：请在设置页「语音训练」填阿里云 AccessKey 与 AppKey');
     }
@@ -187,10 +189,32 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     return this.voiceToken.token;
   }
 
-  /** 语音是否可用（开启 + 密钥齐备） */
-  voiceReady(): boolean {
-    const v = this.settings.voice;
+  /** 语音是否可用（开启 + 密钥齐备）；基于 voice.json 直读结果 */
+  async voiceReady(): Promise<boolean> {
+    const v = await this.loadVoiceConfig();
     return v.enabled && Boolean(v.aliyunAccessKeyId && v.aliyunAccessKeySecret && v.aliyunAppKey);
+  }
+
+  private static readonly VOICE_CONFIG_PATH = `${ROOT}/雅思/口语/voice.json`;
+
+  /** 语音配置直读 雅思/口语/voice.json；文件缺失/损坏时回退插件设置并迁移写入 */
+  async loadVoiceConfig(): Promise<VoiceSettings> {
+    try {
+      const c = await this.vaultService.read(ALevelStudyCoachPlugin.VOICE_CONFIG_PATH);
+      if (c) {
+        const j = JSON.parse(c) as Partial<VoiceSettings>;
+        if (j && typeof j === 'object') return Object.assign({}, DEFAULT_SETTINGS.voice, j);
+      }
+    } catch { /* 解析失败回退 */ }
+    await this.saveVoiceConfig();
+    return this.settings.voice;
+  }
+
+  /** 保存语音配置到 voice.json（设置页修改后调用；语音链路只认这份文件） */
+  async saveVoiceConfig(): Promise<void> {
+    try {
+      await this.vaultService.write(ALevelStudyCoachPlugin.VOICE_CONFIG_PATH, JSON.stringify(this.settings.voice, null, 2));
+    } catch { /* 保存失败不阻塞 UI */ }
   }
 
   async loadSettings(): Promise<void> {
