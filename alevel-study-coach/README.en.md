@@ -58,6 +58,7 @@ tech base simplified-forked from AI Study Buddy.
 | Grade any note | Open any note (task + essay, images included); six-part output written to `## AI 批改`; re-grading archives the previous version for comparison |
 | Score ledger | Every grade appends overall + TR/CC/LR/GRA to `雅思/批改记录.md` — your improvement trajectory |
 | Expression library | High-score expressions auto-collected (deduplicated) with simplified SM-2 intervals 1→3→7→14→30→60 days and due sentence drills |
+| Speaking training | Coach "IELTS Speaking": A full mock exam (Part 1→2→3) / B single-part focus / C free practice / D discussion & review; delayed & limited corrections, first-session calibration with staged targets (stepwise path to 7.5), evidence-based Band-7 scoring (ranges, no flattery); final scores go to `雅思/口语记录.md` alongside the writing trend, speaking mistakes to the existing wrong-answer ledger (SP/GR/VX), upgraded expressions to the library; text mode for now (voice pipeline P5b in progress, P dimension shown as -) |
 
 ## Data Locations (all inside the vault, syncable via git / iCloud)
 
@@ -67,7 +68,7 @@ vault/StudyCoach/
 ├── 三年路线图.md    # 3-year roadmap
 ├── prompts/         # coach prompts (with ```opening fences), directly editable
 ├── 建议/            # weakness suggestion cards
-├── 雅思/            # essays / grade ledger / expression library
+├── 雅思/            # essays / speaking reports / grade ledger / speaking ledger / expression library
 ├── 周报/            # weekly reports (idempotent overwrite)
 ├── 记录/            # error log, wrong-answer ledger, concept map, question log, terms, practice focus, impressions, stats, progress, diary
 └── 会话/            # session archives (only written if there was interaction)
@@ -104,7 +105,7 @@ Test suite (test/, obsidian isolated via FakeVault, runs directly in node):
 ## Known Limitations (by design)
 
 - Term/expression drill modals are non-streaming (replies are short)
-- No IELTS speaking/listening/reading features (offline-learning scope)
+- No IELTS listening/reading features (offline-learning scope); speaking voice pipeline (ASR/TTS) under construction — text mode for now
 - Reports/radar are plain-text stats; no chart libraries (kept lightweight)
 - Prompt template updates never overwrite existing vault files (user edits win)
 - Streaming relies on fetch; if a provider blocks browser CORS, use an OpenAI-compatible gateway

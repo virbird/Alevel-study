@@ -20,7 +20,7 @@ export interface ChatMessage {
 
 // ─── 科目 ──────────────────────────────────────────────────
 export type SubjectKey = 'Maths' | 'Physics' | 'Chemistry' | 'CS' | 'Economics';
-export type ModeKey = SubjectKey | 'drill' | 'ielts';
+export type ModeKey = SubjectKey | 'drill' | 'ielts' | 'speaking';
 
 export interface SubjectMeta {
   key: ModeKey;
@@ -39,6 +39,7 @@ export const SUBJECTS: SubjectMeta[] = [
   { key: 'Economics', label: '经济 Economics', promptFile: 'prompt-economics.md', logName: 'Econ' },
   { key: 'drill', label: '概念精练（术语训练）', promptFile: 'prompt-drill.md' },
   { key: 'ielts', label: '雅思写作训练（批改/点评/讨论）', promptFile: 'prompt-ielts.md' },
+  { key: 'speaking', label: '雅思口语训练（模考/陪练/讨论）', promptFile: 'prompt-speaking.md' },
 ];
 
 // ─── 学生档案 ───────────────────────────────────────────────

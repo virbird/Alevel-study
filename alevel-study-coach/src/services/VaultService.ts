@@ -10,6 +10,7 @@ const PROMPT_FILES = [
   'prompt-cs.md',
   'prompt-economics.md',
   'prompt-drill.md',
+  'prompt-speaking.md',
   'prompt-ielts.md',
   'ielts-writing.md',
 ];
@@ -182,6 +183,15 @@ const CONCEPT_MAP_TEMPLATE = `# 概念地图
 |---|---|---|---|---|
 `;
 
+const SPEAKING_LEDGER_TEMPLATE = `# 口语记录
+
+> 口语训练评分台账（趋势数据源，与写作批改记录并排）；无语音输入时 P 维度为 -、总分不含发音。
+> 错词/语法错误进错题本（科目=雅思口语，错因码 SP/GR/VX），高分表达进表达积累库。
+
+| 日期 | 模式 | FC | LR | GRA | P | 总分 | 最大问题 |
+|------|------|----|----|-----|---|------|----------|
+`;
+
 const EXPR_LIB_TEMPLATE = `# 表达积累库
 
 > 雅思作文批改后自动提取的高分表达（也可手动添加）。
@@ -223,6 +233,7 @@ export class VaultService {
       await this.ensureFolder(`${ROOT}/记录/进展`);
       await this.ensureFolder(`${ROOT}/雅思`);
       await this.ensureFolder(`${ROOT}/雅思/作文`);
+      await this.ensureFolder(`${ROOT}/雅思/口语`);
       await this.ensureFolder(`${ROOT}/建议`);
       await this.ensureFolder(`${ROOT}/周报`);
       await this.ensureFolder(`${ROOT}/会话`);
@@ -239,6 +250,7 @@ export class VaultService {
       await this.ensureFile(`${ROOT}/记录/统计分析.md`, STATS_TEMPLATE);
       await this.ensureFile(`${ROOT}/雅思/表达积累库.md`, EXPR_LIB_TEMPLATE);
       await this.ensureFile(`${ROOT}/雅思/批改记录.md`, GRADE_LEDGER_TEMPLATE);
+      await this.ensureFile(`${ROOT}/雅思/口语记录.md`, SPEAKING_LEDGER_TEMPLATE);
       await this.ensureFile(`${ROOT}/记录/错题本.md`, WRONG_ANSWER_TEMPLATE);
       await this.ensureFile(`${ROOT}/记录/概念地图.md`, CONCEPT_MAP_TEMPLATE);
 

@@ -13,6 +13,7 @@ import { SuggestionModal, DrillModal, OfflineFeedbackModal } from './InsightModa
 import { EXPR_LIB_PATH, GRADE_LEDGER_PATH, parseIeltsResult } from '../services/IeltsService';
 import { WRONG_ANSWER_PATH } from '../services/WrongAnswerService';
 import { CONCEPT_MAP_PATH } from '../services/ConceptMapService';
+import { SPEAKING_LEDGER_PATH, parseSpeakingScores, parseSpeakingExpressions, parseSpeakingWrongs, SpeakingService, fmtBand } from '../services/SpeakingService';
 import { oxbridgeGuidance } from '../services/ReportService';
 import type { TermEntry } from '../services/TermService';
 import type { ImagePart } from '../types';
@@ -442,6 +443,7 @@ export class MainView extends ItemView {
       void MarkdownRenderer.render(this.app, display, bubble, '', this.plugin);
       if (m.role === 'assistant' && m === this.messages[this.messages.length - 1]) {
         if (this.mode === 'ielts') this.renderIeltsResultPrompt(bubble, m.content);
+        else if (this.mode === 'speaking') this.renderSpeakingCards(bubble, m.content);
         else this.renderLogRowPrompt(bubble);
         this.renderWrongAnswerPrompt(bubble, m.content);
         this.renderConceptMapPrompt(bubble, m.content);
@@ -1058,6 +1060,60 @@ export class MainView extends ItemView {
     btns.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
   }
 
+  /** 口语训练：检测终训评分/表达/错题机器块 → 确认卡片一次入库三处（口语台账/表达库/错题本） */
+  private renderSpeakingCards(parent: HTMLElement, reply: string): void {
+    const finals = parseSpeakingScores(reply).filter(s => s.part === 'final');
+    const exprs = parseSpeakingExpressions(reply);
+    const wrongs = parseSpeakingWrongs(reply);
+    if (!finals.length && !exprs.length && !wrongs.length) return;
+
+    const bar = parent.createDiv({ cls: 'asc-logbar' });
+    if (finals.length) {
+      const s = finals[finals.length - 1];
+      bar.createSpan({
+        text: `检测到终训评分：FC ${fmtBand(s.fc)} / LR ${fmtBand(s.lr)} / GRA ${fmtBand(s.gra)} / P ${fmtBand(s.p)} · 总分 ${SpeakingService.fmtOverall(s)}${s.p === null ? '（不含发音）' : ''}`,
+      });
+      if (s.biggestIssue) bar.createEl('div', { text: `最大问题：${s.biggestIssue}`, cls: 'asc-logrow' });
+    }
+    const parts: string[] = [];
+    if (exprs.length) parts.push(`${exprs.length} 条高分表达`);
+    if (wrongs.length) parts.push(`${wrongs.length} 条错题（SP/GR/VX）`);
+    if (parts.length) bar.createEl('div', { text: parts.join(' · '), cls: 'asc-logrow' });
+
+    const row = bar.createDiv({ cls: 'asc-row' });
+    // 模式选择：台账按模考/陪练/讨论区分趋势
+    const modeSel = row.createEl('select', { cls: 'asc-select' });
+    for (const m of ['模考', '陪练', '讨论']) modeSel.createEl('option', { text: m, value: m });
+    row.createEl('button', { text: '入库（分数+表达+错题）', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', async ev => {
+      (ev.target as HTMLElement).setAttr('disabled', 'true');
+      try {
+        const msgs: string[] = [];
+        if (finals.length) {
+          await this.plugin.speaking.registerScore(finals[finals.length - 1], modeSel.value);
+          msgs.push('分数进口语记录（趋势可见）');
+        }
+        if (exprs.length) {
+          const added = await this.plugin.expressions.appendAll(exprs, `口语训练-${todayStr()}`);
+          if (added) msgs.push(`${added} 条表达进积累库`);
+        }
+        if (wrongs.length) {
+          let added = 0;
+          for (const w of wrongs) {
+            const e = await this.plugin.wrongAnswers.addEntry({ subject: '雅思口语', topic: w.topic, myError: w.myError, code: w.code, answerSource: '口语训练', status: '未订正' });
+            if (e) added++;
+          }
+          if (added) msgs.push(`${added} 条错题进错题本（下次自动跟进）`);
+        }
+        new Notice(msgs.length ? `已入库：${msgs.join('，')}` : '今日已有同考点记录，未重复登记');
+        bar.remove();
+      } catch (e) {
+        new Notice(`入库失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+        (ev.target as HTMLElement).removeAttribute('disabled');
+      }
+    });
+    row.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
+  }
+
   /**
    * 存档：把未落盘的消息增量追加到会话文件。
    * 新会话 / 关闭视图 / 点「存档」都会调用，因此不会丢数据也不会重复写。
@@ -1311,9 +1367,29 @@ export class MainView extends ItemView {
       }
     }
 
+    // ⑦ 口语记录（口语训练终训评分入库；与写作批改记录并排的趋势）
+    const sps = await this.plugin.speaking.loadScores();
+    const b7 = this.collapsibleSection('rec-speaking', el, '⑦ 口语记录（趋势）', `${sps.length} 次`, sps.length > 0);
+    if (b7) {
+      if (!sps.length) {
+        b7.createDiv({ text: '还没有口语评分——教练页签选「雅思口语训练」，终训总结后确认入库。', cls: 'asc-empty' });
+      } else {
+        const wrap = b7.createDiv({ cls: 'asc-table-wrap' });
+        const st = wrap.createEl('table', { cls: 'asc-table' });
+        const shead = st.createEl('tr');
+        for (const h of ['日期', '模式', 'FC', 'LR', 'GRA', 'P', '总分', '最大问题']) shead.createEl('th', { text: h });
+        for (const s of [...sps].reverse().slice(0, ROW_CAP)) {
+          const tr = st.createEl('tr');
+          for (const cell of [s.date, s.mode, s.fc, s.lr, s.gra, s.p, s.overall, s.issue]) tr.createEl('td', { text: cell });
+        }
+        if (sps.length > ROW_CAP) wrap.createDiv({ text: `… 仅显示最近 ${ROW_CAP} 条，全 ${sps.length} 条见口语记录.md`, cls: 'asc-muted' });
+      }
+    }
+
     const links = el.createDiv({ cls: 'asc-row' });
     links.createEl('button', { text: '打开 error-log.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/error-log.md`));
     links.createEl('button', { text: '批改记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(GRADE_LEDGER_PATH));
+    links.createEl('button', { text: '口语记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(SPEAKING_LEDGER_PATH));
     links.createEl('button', { text: '积累库.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(EXPR_LIB_PATH));
     links.createEl('button', { text: '错题本.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(WRONG_ANSWER_PATH));
     links.createEl('button', { text: '概念地图.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(CONCEPT_MAP_PATH));
@@ -1553,7 +1629,7 @@ function fmtRemain(ms: number): string {
 /** 剥离回复里机器用 JSON 块（ieltsResult / sessionTag / wrongAnswer），其他内容原样保留；导出供测试 */
 export function stripMachineBlocks(content: string): string {
   return content
-    .replace(/```json\s*[\s\S]*?```/g, block => (/"ieltsResult"|"sessionTag"|"wrongAnswer"|"conceptMap"/.test(block) ? '' : block))
+    .replace(/```json\s*[\s\S]*?```/g, block => (/"ieltsResult"|"sessionTag"|"wrongAnswer"|"conceptMap"|"ieltsSpeaking"|"ieltsExpressions"|"wrongAnswers"/.test(block) ? '' : block))
     .replace(/\n{3,}/g, '\n\n')
     .trimEnd();
 }
