@@ -13,7 +13,7 @@ import { SuggestionModal, DrillModal, OfflineFeedbackModal } from './InsightModa
 import { EXPR_LIB_PATH, GRADE_LEDGER_PATH, parseIeltsResult } from '../services/IeltsService';
 import { WRONG_ANSWER_PATH } from '../services/WrongAnswerService';
 import { CONCEPT_MAP_PATH } from '../services/ConceptMapService';
-import { CHAPTER_PROGRESS_PATH, ChapterProgressService } from '../services/ChapterProgressService';
+import { CHAPTER_PROGRESS_PATH, ChapterEntry, ChapterProgressService } from '../services/ChapterProgressService';
 import { SPEAKING_LEDGER_PATH, SPEAKING_REPORT_DIR, parseSpeakingScores, parseSpeakingExpressions, parseSpeakingWrongs, SpeakingService, fmtBand } from '../services/SpeakingService';
 import { AudioRecorder } from '../voice/AudioRecorder';
 import { aliyunAsr, aliyunTts } from '../voice/AliyunNls';
@@ -1572,32 +1572,54 @@ export class MainView extends ItemView {
       if (!chs.length) {
         b8.createDiv({ text: '还没有章节——在 记录/章节进度.md 登记科目章节后即可在这里控制解锁。', cls: 'asc-empty' });
       }
+      // 按科目分组折叠：每组标题显示科目 + 章节数/解锁数，默认收起（避免 58 章平铺）
+      const SUBJECT_LABEL: Record<string, string> = { Economics: '📘 Economics 经济', Chemistry: '🧪 Chemistry 化学' };
+      const groups = new Map<string, ChapterEntry[]>();
       for (const c of chs) {
-        const row = b8.createDiv({ cls: 'asc-queue-item' });
-        const head = row.createDiv({ cls: 'asc-row' });
-        head.createSpan({ text: `${c.chapter}`, cls: 'asc-strong' });
-        head.createSpan({ text: c.status + (c.unlocked ? `（${c.unlocked}）` : ''), cls: 'asc-muted' });
-        const btns = row.createDiv({ cls: 'asc-row' });
-        if (c.status === '锁定') {
-          btns.createEl('button', { text: '解锁进入学习', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', async () => {
-            await this.plugin.chapters.updateStatus(c.subject, c.chapter, '解锁');
-            this.render();
-          });
-        } else {
-          if (c.status === '解锁') {
-            btns.createEl('button', { text: '标记已掌握', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
-              await this.plugin.chapters.updateStatus(c.subject, c.chapter, '已掌握');
+        const list = groups.get(c.subject) ?? [];
+        list.push(c);
+        groups.set(c.subject, list);
+      }
+      for (const [subject, list] of groups) {
+        const groupUnlocked = list.filter(c => c.status !== '锁定').length;
+        const gKey = `rec-chapters-${subject}`;
+        const gExpanded = this.expanded[gKey] ?? false;
+        const card = b8.createDiv({ cls: 'asc-card asc-queue-card' });
+        const head = card.createDiv({ cls: 'asc-queue-head' });
+        const tg = head.createEl('button', { text: gExpanded ? '▾' : '▸', cls: 'asc-btn asc-btn-icon asc-fold-btn' });
+        tg.setAttr('title', gExpanded ? '收起细节' : '展开细节');
+        tg.addEventListener('click', () => { this.expanded[gKey] = !gExpanded; this.render(); });
+        head.createSpan({ text: SUBJECT_LABEL[subject] ?? subject, cls: 'asc-queue-title' });
+        head.createSpan({ text: `${list.length} 章 · 解锁 ${groupUnlocked}`, cls: 'asc-queue-badge' + (groupUnlocked > 0 ? ' asc-badge-hot' : '') });
+        if (!gExpanded) continue;
+        const body = card.createDiv({ cls: 'asc-queue-body' });
+        for (const c of list) {
+          const row = body.createDiv({ cls: 'asc-queue-item' });
+          const head2 = row.createDiv({ cls: 'asc-row' });
+          head2.createSpan({ text: `${c.chapter}`, cls: 'asc-strong' });
+          head2.createSpan({ text: c.status + (c.unlocked ? `（${c.unlocked}）` : ''), cls: 'asc-muted' });
+          const btns = row.createDiv({ cls: 'asc-row' });
+          if (c.status === '锁定') {
+            btns.createEl('button', { text: '解锁进入学习', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', async () => {
+              await this.plugin.chapters.updateStatus(c.subject, c.chapter, '解锁');
+              this.render();
+            });
+          } else {
+            if (c.status === '解锁') {
+              btns.createEl('button', { text: '标记已掌握', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
+                await this.plugin.chapters.updateStatus(c.subject, c.chapter, '已掌握');
+                this.render();
+              });
+            }
+            btns.createEl('button', { text: '锁定', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
+              await this.plugin.chapters.updateStatus(c.subject, c.chapter, '锁定');
               this.render();
             });
           }
-          btns.createEl('button', { text: '锁定', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
-            await this.plugin.chapters.updateStatus(c.subject, c.chapter, '锁定');
-            this.render();
-          });
+          btns.createEl('button', { text: '打开内容', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(c.file));
         }
-        btns.createEl('button', { text: '打开内容', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(c.file));
       }
-      b8.createDiv({ text: '解锁的章节会自动注入经济/概念精练教练提示词（章节+术语），未解锁章节不主动训练。', cls: 'asc-muted' });
+      b8.createDiv({ text: '解锁的章节会自动注入经济/化学/概念精练教练提示词（章节+术语），未解锁章节不主动训练。', cls: 'asc-muted' });
     }
 
     const links = el.createDiv({ cls: 'asc-row' });
