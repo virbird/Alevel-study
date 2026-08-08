@@ -70,4 +70,28 @@ export class ChapterProgressService {
       .filter(r => r.length >= 2 && r[0] !== 'Term (EN)' && r[0] !== '关键词 (EN)' && r[0])
       .map(r => ({ term: r[0], def: r[1], cn: r[2] ?? '' }));
   }
+
+  /** 提取「考纲独有考点」小节全文（考纲有要求而教材未覆盖，学习与复习时单独强调） */
+  static parseSyllabusOnly(fileContent: string): string {
+    const re = new RegExp('## [^\\n]*考纲独有考点[^\\n]*\\n([\\s\\S]*?)(?=\\n## |$)');
+    const m = fileContent.match(re);
+    return m ? m[1].trim() : '';
+  }
+
+  /** 提取「技能重点（SKILLS FOCUS）」小节：只保留各小节标题与「要点 Key points」行（控制注入体积），作为模式 B/F 的教材方法基准 */
+  static parseSkillsFocus(fileContent: string): string {
+    const m = fileContent.match(/## 技能重点[^\n]*\n([\s\S]*?)(?=\n## |$)/);
+    if (!m) return '';
+    const out: string[] = [];
+    let title = '';
+    for (const l of m[1].split('\n')) {
+      const t = l.trim();
+      if (t.startsWith('### ')) title = t.slice(4);
+      else if (t.startsWith('- **要点 Key points**')) {
+        const body = t.replace(/^-\s*\*\*要点 Key points\*\*[:：]\s*/, '');
+        out.push(`- ${title}: ${body}`);
+      }
+    }
+    return out.join('\n');
+  }
 }

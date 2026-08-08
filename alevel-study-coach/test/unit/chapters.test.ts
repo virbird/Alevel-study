@@ -156,4 +156,49 @@ export async function run(): Promise<void> {
   const fContent = (await fv.asService().read(CHAPTER_PROGRESS_PATH)) ?? '';
   check('折叠块结构保持（details 标签仍在）', fContent.includes('<details>') && fContent.includes('</details>'));
   check('折叠块结构保持（经济块未被化学解锁破坏）', fContent.includes('| Economics | Ch1 The basic economic problem | StudyCoach/记录/经济/Ch1.md | 锁定 |  |'));
+
+  section('UT: parseSyllabusOnly / parseSkillsFocus（考纲独有考点与技能重点注入）');
+  const RICH = `# Ch05 · Test chapter
+
+## 关键词与原文定义（KEY WORDS）
+
+| 关键词 (EN) | 原文定义 | 中文对照 |
+|-------------|----------|----------|
+| market | Any arrangement that allows goods and services to be traded | 市场 |
+
+## 技能重点（SKILLS FOCUS，需掌握的重要能力）
+
+### SKILLS FOCUS 1.1 Converting denary to binary（十进制与二进制互转）
+- **内容 Content**: Binary number size is determined by bits.
+- **要点 Key points**: 位权从右向左递增（中文要点）
+
+### 1.2 Another skill
+- **内容 Content**: other content
+- **要点 Key points**: 要点二（中文要点）
+
+## ⚠️ 考纲独有考点（教材未覆盖 · 学习与复习重点）
+
+> 以下为考纲明确要求、但教材未单列的内容。
+
+- **microeconomics / macroeconomics（考纲 2.1）**：微观研究个体，宏观研究整体。
+
+## 章末 Summary（原文要点，中文辅助）
+
+- Summary 内容
+`;
+  const sy = ChapterProgressService.parseSyllabusOnly(RICH);
+  check('考纲独有提取非空', sy.length > 0);
+  check('考纲独有含考点行', sy.includes('microeconomics'));
+  check('考纲独有不混入后续小节', !sy.includes('Summary 内容'));
+
+  const sk = ChapterProgressService.parseSkillsFocus(RICH);
+  check('技能重点非空', sk.length > 0);
+  check('技能重点含要点一', sk.includes('位权从右向左递增'));
+  check('技能重点含要点二', sk.includes('要点二'));
+  check('技能重点不含内容行', !sk.includes('Binary number size'));
+  check('技能重点带小节标题', sk.includes('SKILLS FOCUS 1.1'));
+
+  const PLAIN = '# Ch\n\n## 关键词与原文定义\n\n| 关键词 (EN) | 定义 | 中文 |\n|---|---|---|\n| a | b | c |\n';
+  eq('无考纲独有小节返回空', ChapterProgressService.parseSyllabusOnly(PLAIN).length, 0);
+  eq('无技能重点小节返回空', ChapterProgressService.parseSkillsFocus(PLAIN).length, 0);
 }

@@ -740,9 +740,9 @@ export class MainView extends ItemView {
         );
       }
     }
-    // 解锁章节（章节进度台账）：当前科目（经济/化学/物理）聚焦的章节与术语
+    // 解锁章节（章节进度台账）：当前科目（经济/化学/物理/计算机）聚焦的章节、术语、技能重点与考纲独有考点
     const subject = this.mode === 'drill' ? 'Economics' : this.mode;
-    if (subject === 'Economics' || subject === 'Chemistry' || subject === 'Physics') {
+    if (subject === 'Economics' || subject === 'Chemistry' || subject === 'Physics' || subject === 'CS') {
       const unlocked = await this.plugin.chapters.unlocked(subject);
       if (unlocked.length) {
         const blocks: string[] = [];
@@ -751,15 +751,21 @@ export class MainView extends ItemView {
           const c = await this.plugin.vaultService.read(ch.file);
           const terms = c ? ChapterProgressService.parseTerms(c) : [];
           const tlines = terms.map(t => `  - ${t.term}: ${t.def}`).join('\n');
-          const block = `【${ch.chapter}】${ch.status === '已掌握' ? '（已掌握，可抽查复习）' : '（解锁学习中）'}\n${tlines || '（内容文件暂无术语表）'}`;
+          const skills = c ? ChapterProgressService.parseSkillsFocus(c) : '';
+          const syllabusOnly = c ? ChapterProgressService.parseSyllabusOnly(c) : '';
+          let block = `【${ch.chapter}】${ch.status === '已掌握' ? '（已掌握，可抽查复习）' : '（解锁学习中）'}\n${tlines || '（内容文件暂无术语表）'}`;
+          if (skills) block += `\n  【技能重点（教材方法基准）】\n${skills.split('\n').map(l => '  ' + l).join('\n')}`;
+          if (syllabusOnly) block += `\n  【⚠️ 考纲独有考点（教材未覆盖，必强调）】\n${syllabusOnly.split('\n').map(l => '  ' + l).join('\n')}`;
           if (size + block.length > 6000) break; // 注入限量，避免占用上下文
           size += block.length;
           blocks.push(block);
         }
-        const subjCn = subject === 'Economics' ? '经济' : subject === 'Chemistry' ? '化学' : '物理';
+        const subjCn = subject === 'Economics' ? '经济' : subject === 'Chemistry' ? '化学' : subject === 'Physics' ? '物理' : '计算机';
         extras.push(
           `════════ 插件注入：已解锁的${subjCn}章节（章节进度）════════\n` + blocks.join('\n') +
-          '\n使用方式：这些章节是当前学习与复习的聚焦范围；定义为 syllabus 口径，学生提供课本原文时以课本为准；未解锁章节不主动训练。',
+          '\n使用方式：这些章节是当前学习与复习的聚焦范围；定义为 syllabus 口径，学生提供课本原文时以课本为准；未解锁章节不主动训练。' +
+          '「技能重点」是教材方法基准：模式 B 成分拆解、模式 F 关系图时以此为校对基准；' +
+          '「⚠️ 考纲独有考点」是考试要求但教材未覆盖的内容：学习与复习时主动强调，相关概念练完时单独提醒其重要性。',
         );
       }
     }
