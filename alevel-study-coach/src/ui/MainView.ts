@@ -13,6 +13,7 @@ import { SuggestionModal, DrillModal, OfflineFeedbackModal } from './InsightModa
 import { EXPR_LIB_PATH, GRADE_LEDGER_PATH, parseIeltsResult } from '../services/IeltsService';
 import { WRONG_ANSWER_PATH } from '../services/WrongAnswerService';
 import { CONCEPT_MAP_PATH } from '../services/ConceptMapService';
+import { CHAPTER_PROGRESS_PATH, ChapterProgressService } from '../services/ChapterProgressService';
 import { SPEAKING_LEDGER_PATH, SPEAKING_REPORT_DIR, parseSpeakingScores, parseSpeakingExpressions, parseSpeakingWrongs, SpeakingService, fmtBand } from '../services/SpeakingService';
 import { AudioRecorder } from '../voice/AudioRecorder';
 import { aliyunAsr, aliyunTts } from '../voice/AliyunNls';
@@ -736,6 +737,27 @@ export class MainView extends ItemView {
         extras.push(
           '════════ 插件注入：概念地图中的预习概念（尚未详细学习）════════\n' + plines.join('\n') +
           '\n使用方式：学生练到这些概念时是首次详细掌握，可从 A/B 正常练；练完让他确认「把 X 改为已学」。',
+        );
+      }
+    }
+    // 解锁章节（章节进度台账）：经济科目当前聚焦的章节与术语
+    if (this.mode === 'Economics' || this.mode === 'drill') {
+      const unlocked = await this.plugin.chapters.unlocked('Economics');
+      if (unlocked.length) {
+        const blocks: string[] = [];
+        let size = 0;
+        for (const ch of unlocked) {
+          const c = await this.plugin.vaultService.read(ch.file);
+          const terms = c ? ChapterProgressService.parseTerms(c) : [];
+          const tlines = terms.map(t => `  - ${t.term}: ${t.def}`).join('\n');
+          const block = `【${ch.chapter}】${ch.status === '已掌握' ? '（已掌握，可抽查复习）' : '（解锁学习中）'}\n${tlines || '（内容文件暂无术语表）'}`;
+          if (size + block.length > 6000) break; // 注入限量，避免占用上下文
+          size += block.length;
+          blocks.push(block);
+        }
+        extras.push(
+          '════════ 插件注入：已解锁的经济章节（章节进度）════════\n' + blocks.join('\n') +
+          '\n使用方式：这些章节是当前学习与复习的聚焦范围；定义为 syllabus 口径，学生提供课本原文时以课本为准；未解锁章节不主动训练。',
         );
       }
     }
@@ -1541,6 +1563,42 @@ export class MainView extends ItemView {
       }
     }
 
+    // ⑧ 章节进度（解锁的章节注入对应科目教练提示词，聚焦学习与复习）
+    const chs = await this.plugin.chapters.load();
+    const unlockedN = chs.filter(c => c.status !== '锁定').length;
+    const b8 = this.collapsibleSection('rec-chapters', el, '⑧ 章节进度', `${chs.length} 章 · 解锁 ${unlockedN}`, chs.length > 0);
+    if (b8) {
+      if (!chs.length) {
+        b8.createDiv({ text: '还没有章节——在 记录/章节进度.md 登记科目章节后即可在这里控制解锁。', cls: 'asc-empty' });
+      }
+      for (const c of chs) {
+        const row = b8.createDiv({ cls: 'asc-queue-item' });
+        const head = row.createDiv({ cls: 'asc-row' });
+        head.createSpan({ text: `${c.chapter}`, cls: 'asc-strong' });
+        head.createSpan({ text: c.status + (c.unlocked ? `（${c.unlocked}）` : ''), cls: 'asc-muted' });
+        const btns = row.createDiv({ cls: 'asc-row' });
+        if (c.status === '锁定') {
+          btns.createEl('button', { text: '解锁进入学习', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', async () => {
+            await this.plugin.chapters.updateStatus(c.subject, c.chapter, '解锁');
+            this.render();
+          });
+        } else {
+          if (c.status === '解锁') {
+            btns.createEl('button', { text: '标记已掌握', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
+              await this.plugin.chapters.updateStatus(c.subject, c.chapter, '已掌握');
+              this.render();
+            });
+          }
+          btns.createEl('button', { text: '锁定', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
+            await this.plugin.chapters.updateStatus(c.subject, c.chapter, '锁定');
+            this.render();
+          });
+        }
+        btns.createEl('button', { text: '打开内容', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(c.file));
+      }
+      b8.createDiv({ text: '解锁的章节会自动注入经济/概念精练教练提示词（章节+术语），未解锁章节不主动训练。', cls: 'asc-muted' });
+    }
+
     const links = el.createDiv({ cls: 'asc-row' });
     links.createEl('button', { text: '打开 error-log.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/error-log.md`));
     links.createEl('button', { text: '批改记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(GRADE_LEDGER_PATH));
@@ -1548,6 +1606,7 @@ export class MainView extends ItemView {
     links.createEl('button', { text: '积累库.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(EXPR_LIB_PATH));
     links.createEl('button', { text: '错题本.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(WRONG_ANSWER_PATH));
     links.createEl('button', { text: '概念地图.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(CONCEPT_MAP_PATH));
+    links.createEl('button', { text: '章节进度.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(CHAPTER_PROGRESS_PATH));
     links.createEl('button', { text: '提问记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/提问记录.md`));
     links.createEl('button', { text: '术语清单.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/术语清单.md`));
   }

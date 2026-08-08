@@ -11,6 +11,7 @@ import { SuggestionService } from './services/SuggestionService';
 import { StatsService } from './services/StatsService';
 import { WrongAnswerService } from './services/WrongAnswerService';
 import { ConceptMapService } from './services/ConceptMapService';
+import { ChapterProgressService } from './services/ChapterProgressService';
 import { SpeakingService, SPEAKING_REPORT_DIR } from './services/SpeakingService';
 import { TermListService } from './services/TermService';
 import { IeltsService } from './services/IeltsService';
@@ -85,6 +86,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   expressions!: ExpressionService;
   wrongAnswers!: WrongAnswerService;
   conceptMap!: ConceptMapService;
+  chapters!: ChapterProgressService;
   speaking!: SpeakingService;
   /** 阿里云 NLS Token 缓存（有效期约 24h，到期前 10 分钟自动续） */
   voiceToken: { token: string; expireTime: number } | null = null;
@@ -114,6 +116,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     this.expressions = new ExpressionService(this.vaultService);
     this.wrongAnswers = new WrongAnswerService(this.vaultService);
     this.conceptMap = new ConceptMapService(this.vaultService);
+    this.chapters = new ChapterProgressService(this.vaultService);
     this.speaking = new SpeakingService(this.vaultService);
     this.engine = new InsightEngine(this.vaultService);
     this.suggestions = new SuggestionService(this.vaultService);

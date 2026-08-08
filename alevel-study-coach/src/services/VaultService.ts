@@ -192,6 +192,15 @@ const SPEAKING_LEDGER_TEMPLATE = `# 口语记录
 |------|------|----|----|-----|---|------|----------|
 `;
 
+const CHAPTER_PROGRESS_TEMPLATE = `# 章节进度
+
+> 按科目管理章节的 锁定/解锁/已掌握：解锁的章节会注入该科目教练提示词（章节名+术语），
+> 学习与复习聚焦当前进度；章节内容文件存学习资产（大纲目标/术语/计算）。
+
+| 科目 | 章节 | 内容文件 | 状态 | 解锁日期 |
+|------|------|----------|------|----------|
+`;
+
 const EXPR_LIB_TEMPLATE = `# 表达积累库
 
 > 雅思作文批改后自动提取的高分表达（也可手动添加）。
@@ -253,6 +262,7 @@ export class VaultService {
       await this.ensureFile(`${ROOT}/雅思/口语记录.md`, SPEAKING_LEDGER_TEMPLATE);
       await this.ensureFile(`${ROOT}/记录/错题本.md`, WRONG_ANSWER_TEMPLATE);
       await this.ensureFile(`${ROOT}/记录/概念地图.md`, CONCEPT_MAP_TEMPLATE);
+      await this.ensureFile(`${ROOT}/记录/章节进度.md`, CHAPTER_PROGRESS_TEMPLATE);
 
       await this.seedPrompts();
     } catch (e) {

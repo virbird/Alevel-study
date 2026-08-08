@@ -10,6 +10,7 @@ import * as utSse from './unit/sse.test';
 import * as utWrongAnswer from './unit/wronganswer.test';
 import * as utReviewFb from './unit/reviewfb.test';
 import * as utConceptMap from './unit/conceptmap.test';
+import * as utChapters from './unit/chapters.test';
 import * as utSpeaking from './unit/speaking.test';
 import * as utVoice from './unit/voice.test';
 import * as utContext from './unit/context.test';
@@ -29,6 +30,7 @@ async function main(): Promise<void> {
   await utWrongAnswer.run();
   await utReviewFb.run();
   await utConceptMap.run();
+  await utChapters.run();
   await utSpeaking.run();
   await utVoice.run();
   await utContext.run();
