@@ -740,9 +740,9 @@ export class MainView extends ItemView {
         );
       }
     }
-    // 解锁章节（章节进度台账）：当前科目（经济/化学）聚焦的章节与术语
+    // 解锁章节（章节进度台账）：当前科目（经济/化学/物理）聚焦的章节与术语
     const subject = this.mode === 'drill' ? 'Economics' : this.mode;
-    if (subject === 'Economics' || subject === 'Chemistry') {
+    if (subject === 'Economics' || subject === 'Chemistry' || subject === 'Physics') {
       const unlocked = await this.plugin.chapters.unlocked(subject);
       if (unlocked.length) {
         const blocks: string[] = [];
@@ -756,8 +756,9 @@ export class MainView extends ItemView {
           size += block.length;
           blocks.push(block);
         }
+        const subjCn = subject === 'Economics' ? '经济' : subject === 'Chemistry' ? '化学' : '物理';
         extras.push(
-          `════════ 插件注入：已解锁的${subject === 'Economics' ? '经济' : '化学'}章节（章节进度）════════\n` + blocks.join('\n') +
+          `════════ 插件注入：已解锁的${subjCn}章节（章节进度）════════\n` + blocks.join('\n') +
           '\n使用方式：这些章节是当前学习与复习的聚焦范围；定义为 syllabus 口径，学生提供课本原文时以课本为准；未解锁章节不主动训练。',
         );
       }

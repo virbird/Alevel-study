@@ -95,6 +95,29 @@ export async function run(): Promise<void> {
   eq('化学表头中文', ct[2].cn, '微粒运动理论');
   eq('化学定义含括号不受影响', ct[0].def.includes('(they have volume)'), true);
 
+  section('UT: parseTerms 兼容物理表头（关键词与原文定义（KEY WORDS）括号后缀）');
+  const PHYS = `# Ch16 · Magnetism（磁学）
+
+## 学习目标（Learning intentions 原文，中文辅助）
+- describe magnetic forces between magnets（描述磁体之间的磁力）
+
+## 关键词与原文定义（KEY WORDS）
+
+| 关键词 (EN) | 原文定义（教材 KEY WORDS 框） | 中文对照 |
+|-------------|--------------------------|----------|
+| magnetic field | A region of space around a magnet or electric current in which a magnetic pole experiences (feels) a force. | 磁场 |
+| induced magnetism | When a magnetic material is only magnetised when placed in a magnetic field. | 感应磁化 |
+
+## 章末 Summary（原文要点，中文辅助）
+- 列表项
+`;
+  const pt = ChapterProgressService.parseTerms(PHYS);
+  eq('物理表头条数', pt.length, 2);
+  eq('物理表头术语', pt[0].term, 'magnetic field');
+  eq('物理表头定义', pt[0].def, 'A region of space around a magnet or electric current in which a magnetic pole experiences (feels) a force.');
+  eq('物理表头中文', pt[1].cn, '感应磁化');
+  eq('物理学习目标段不误提取', pt.some(t => t.term.startsWith('describe')), false);
+
   section('UT: 台账按科目折叠格式（<details> 分块）读写兼容');
   const FOLDED = `# 章节进度
 
