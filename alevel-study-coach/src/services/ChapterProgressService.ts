@@ -62,12 +62,12 @@ export class ChapterProgressService {
     return true;
   }
 
-  /** 从章节内容文件提取术语（## 术语 表格：Term | 定义(EN) | 中文提示） */
+  /** 从章节内容文件提取术语（## 术语 或 ## 红色关键词与原文定义 表格：Term/关键词 | 定义(EN) | 中文提示） */
   static parseTerms(fileContent: string): ChapterTerm[] {
-    const m = fileContent.match(/## 术语\s*\n([\s\S]*?)(?=\n## |$)/);
+    const m = fileContent.match(/## (术语|红色关键词与原文定义)\s*\n([\s\S]*?)(?=\n## |$)/);
     if (!m) return [];
-    return parseTable(m[1])
-      .filter(r => r.length >= 2 && r[0] !== 'Term (EN)' && r[0])
+    return parseTable(m[2])
+      .filter(r => r.length >= 2 && r[0] !== 'Term (EN)' && r[0] !== '关键词 (EN)' && r[0])
       .map(r => ({ term: r[0], def: r[1], cn: r[2] ?? '' }));
   }
 }

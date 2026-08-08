@@ -54,4 +54,23 @@ export async function run(): Promise<void> {
   eq('定义', terms[1].def, 'Next best alternative given up');
   eq('中文提示列', terms[0].cn, '稀缺');
   eq('无术语小节返回空', ChapterProgressService.parseTerms('# 只有标题\n正文').length, 0);
+
+  section('UT: parseTerms 兼容新表头（红色关键词与原文定义）');
+  const NEW = `# S2-C10 Price elasticity of demand
+
+## 红色关键词与原文定义
+
+| 关键词 (EN) | 原文定义（教材正文，OCR） | 中文对照 |
+|-------------|--------------------------|----------|
+| price elasticity of demand | Price elasticity of demand (PED) measures the extent to which the quantity demanded changes when the price changes. | 需求价格弹性（PED） |
+| elastic demand | Perfectly elastic demand occurs when a change in price causes a complete change in quantity demanded. | 弹性需求 |
+
+## 章末 Summary
+- 列表项
+`;
+  const nt = ChapterProgressService.parseTerms(NEW);
+  eq('新表头条数', nt.length, 2);
+  eq('新表头术语', nt[0].term, 'price elasticity of demand');
+  eq('新表头定义', nt[0].def, 'Price elasticity of demand (PED) measures the extent to which the quantity demanded changes when the price changes.');
+  eq('新表头中文', nt[0].cn, '需求价格弹性（PED）');
 }
