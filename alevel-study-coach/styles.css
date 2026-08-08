@@ -13,6 +13,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .asc-title {
@@ -31,6 +32,7 @@
   gap: 4px;
   border-bottom: 1px solid var(--background-modifier-border);
   padding-bottom: 6px;
+  flex-shrink: 0;
 }
 
 .asc-tab {
@@ -56,6 +58,16 @@
   flex-direction: column;
   gap: 8px;
   min-height: 0;
+}
+
+/* 内容超出视口时整体滚动而不是压缩卡片：flex 列容器子项默认 shrink:1 会把卡片压扁裁切 */
+.asc-body > *:not(.asc-chat) {
+  flex-shrink: 0;
+}
+
+/* 聊天气泡同理：聊天区内部滚动，气泡不被压缩 */
+.asc-chat > * {
+  flex-shrink: 0;
 }
 
 .asc-card {
@@ -416,13 +428,7 @@
   100% { margin-left: 100%; }
 }
 
-/* 顶部一行：模型（缩小）+ 标题 + 快捷操作；教练工具栏不换行 */
-.asc-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
+/* 顶部一行：模型（缩小）+ 标题 + 快捷操作；教练工具栏不换行（样式见文件头部 .asc-header） */
 
 .asc-header .asc-model-select {
   max-width: 132px;
