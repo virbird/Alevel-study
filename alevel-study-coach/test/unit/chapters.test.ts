@@ -94,4 +94,43 @@ export async function run(): Promise<void> {
   eq('化学表头定义', ct[1].def, 'A change of state in which a solid turns directly into gas (or gas to solid), the liquid phase being bypassed.');
   eq('化学表头中文', ct[2].cn, '微粒运动理论');
   eq('化学定义含括号不受影响', ct[0].def.includes('(they have volume)'), true);
+
+  section('UT: 台账按科目折叠格式（<details> 分块）读写兼容');
+  const FOLDED = `# 章节进度
+
+> 台账按科目分块折叠。
+
+## 📘 Economics 经济（2 章）
+
+<details>
+<summary>展开/折叠 📘 Economics 经济（2 章）</summary>
+
+| 科目 | 章节 | 内容文件 | 状态 | 解锁日期 |
+|------|------|----------|------|----------|
+| Economics | Ch1 The basic economic problem | StudyCoach/记录/经济/Ch1.md | 锁定 |  |
+| Economics | Ch2 The allocation of resources | StudyCoach/记录/经济/Ch2.md | 锁定 |  |
+
+</details>
+
+## 🧪 Chemistry 化学（2 章）
+
+<details>
+<summary>展开/折叠 🧪 Chemistry 化学（2 章）</summary>
+
+| 科目 | 章节 | 内容文件 | 状态 | 解锁日期 |
+|------|------|----------|------|----------|
+| Chemistry | Ch01-States of matter | StudyCoach/记录/化学/章节/Ch01-States of matter.md | 锁定 |  |
+| Chemistry | Ch02-Atomic structure | StudyCoach/记录/化学/章节/Ch02-Atomic structure.md | 锁定 |  |
+
+</details>
+`;
+  const fv = new FakeVault({ seed: { [CHAPTER_PROGRESS_PATH]: FOLDED } });
+  const fcp = new ChapterProgressService(fv.asService());
+  eq('折叠格式全量读取', (await fcp.load()).length, 4);
+  eq('折叠格式按科目过滤', (await fcp.unlocked('Chemistry')).length, 0);
+  check('折叠格式内解锁成功', await fcp.updateStatus('Chemistry', 'Ch01-States of matter', '解锁') === true);
+  eq('折叠格式解锁后可取', (await fcp.unlocked('Chemistry')).length, 1);
+  const fContent = (await fv.asService().read(CHAPTER_PROGRESS_PATH)) ?? '';
+  check('折叠块结构保持（details 标签仍在）', fContent.includes('<details>') && fContent.includes('</details>'));
+  check('折叠块结构保持（经济块未被化学解锁破坏）', fContent.includes('| Economics | Ch1 The basic economic problem | StudyCoach/记录/经济/Ch1.md | 锁定 |  |'));
 }
