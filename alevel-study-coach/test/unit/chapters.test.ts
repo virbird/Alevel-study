@@ -73,4 +73,25 @@ export async function run(): Promise<void> {
   eq('新表头术语', nt[0].term, 'price elasticity of demand');
   eq('新表头定义', nt[0].def, 'Price elasticity of demand (PED) measures the extent to which the quantity demanded changes when the price changes.');
   eq('新表头中文', nt[0].cn, '需求价格弹性（PED）');
+
+  section('UT: parseTerms 兼容化学表头（关键词与原文定义）');
+  const CHEM = `# Ch01 · States of matter（物质的状态）
+
+## 关键词与原文定义
+
+| 关键词 (EN) | 原文定义（依据教材整理） | 中文对照 |
+|-------------|--------------------------|----------|
+| matter | The word is used to cover all the substances and materials of which the universe is composed. Samples of all of these materials have two properties in common: they each occupy space (they have volume) and they have mass. | 物质 |
+| sublimation | A change of state in which a solid turns directly into gas (or gas to solid), the liquid phase being bypassed. | 升华 |
+| kinetic particle theory | The kinetic particle theory of matter describes the three different states, and the changes between them, in terms of the movement of particles. | 微粒运动理论 |
+
+## 章末 Summary（原文要点）
+- 列表项
+`;
+  const ct = ChapterProgressService.parseTerms(CHEM);
+  eq('化学表头条数', ct.length, 3);
+  eq('化学表头术语', ct[0].term, 'matter');
+  eq('化学表头定义', ct[1].def, 'A change of state in which a solid turns directly into gas (or gas to solid), the liquid phase being bypassed.');
+  eq('化学表头中文', ct[2].cn, '微粒运动理论');
+  eq('化学定义含括号不受影响', ct[0].def.includes('(they have volume)'), true);
 }
