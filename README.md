@@ -1,78 +1,80 @@
-# A-Level Study Coach（Obsidian 插件）
+# A-Level Study Coach (Obsidian Plugin)
 
-> English version: [README.en.md](./README.en.md)
+> 中文版本：[README.zh.md](./README.zh.md)
 
-A-Level 学习**辅助**教练：主学习在线下，需要协助时才打开它——概念不懂、题目卡住、作文批改。
-插件记录每次求助，逐步发现弱点；目标 A-Level 全 A*、雅思 7.5+。
+An **assistive** A-Level study coach for Obsidian: learning stays offline-first — open the plugin
+only when you need help: an unclear concept, a problem you're stuck on, or essay grading.
+Every request is logged so weaknesses surface over time. Targets: A-Level all A*, IELTS 7.5+.
 
-产品设计见 `docs/产品设计.md`（v0.3）。提示词体系来自 chat-2 教练配置包，技术底座简化 fork 自 AI Study Buddy。
+Product design: `docs/产品设计.md` (v0.3). Prompt system from the chat-2 coach pack;
+tech base simplified-forked from AI Study Buddy.
 
-## 功能总览
+## Feature Overview
 
-### 教练会话
+### Coach Sessions
 
-| 功能 | 说明 |
+| Feature | Description |
 |---|---|
-| 按科目隔离的会话 | 每个科目维护自己的会话；切科目自动存/恢复，结题即关闭 |
-| 自动开会话 | 进入科目即新开会话并展示开场，无需点按钮；无交互的会话不记录 |
-| 开场模式菜单 | 开场白从提示词 ` ```opening ` 围栏本地零请求展示（概念精练 A-G：盲写/拆成分/口语改写/逻辑链/抽查/**概念关系图 F（支持章节级：囊括学过+未学概念，未学的标记预习并自动预览讲解，mermaid 关键词连边）**/**关键词复现 G（整图检索）**；经济 A-D / 雅思 A-D）；回复字母选模式、随时显式跳转、不选则 AI 场景引导 |
-| 概念地图 | 模式 F 章节级画图后确认卡片登记 `记录/概念地图.md`（章节/概念/状态）；预习/待详学概念自动注入概念精练提示词，以后真正学到时转详细掌握，练完确认后改为已学；记录中心有台账视图 |
-| 结题闭环 | 结题=自评/审查/log 行/会话打标，完成后自动存档并续开新会话 |
-| 解题与订正（统一） | 新题卡住与错题订正统一流程：带题求助即走（有作答→比对，卡住→先问试到哪步）；作答图片自动转录；正确答案三级基线（官方答案/模型解答经学生确认/待确认）；定位分歧点引导订正；结题后确认卡片入错题本，未掌握条目自动注入下次会话跟进 |
-| 会话增强 | SSE 流式输出、发图（视觉模型；超 4 张自动分段识别，逐段进度+断点重试，转录并入会话记录）、引用文档作全会话上下文、历史会话续聊 |
-| 独立思考计时 | 会话内倒计时，未到门槛拦截发送；跑满后消息带「思考凭证」 |
+| Per-subject sessions | Each subject keeps its own session; switching saves/restores automatically; concluding closes it |
+| Auto session start | A session opens instantly when you enter a subject — no button needed; sessions with no user input are never recorded |
+| Opening mode menu | The opening is rendered locally from the prompt's ` ```opening ` fence (zero API call): Concept Drill A–G (blind write / decomposition / colloquial rewrite / logic chain / drill / **F concept relation map — chapter-level: includes learned + not-yet-learned concepts, the latter marked as preview with a short auto-explanation, mermaid with keyword edges** / **G keyword recall — reproduce the whole map from keywords**); Economics A–D; IELTS A–D. Reply with a letter to pick a mode, jump anytime, or let the AI guide by context |
+| Concept map | After a chapter-level F map, a confirm card registers concepts to `记录/概念地图.md` (chapter/concept/status); preview/pending concepts are auto-injected into the drill prompt so they switch to detailed mastery when actually learned, and become “learned” after confirmation; the records center shows the ledger |
+| Conclude flow | Conclude = self-review, scrutiny, error-log rows, session tagging; then auto-archive and auto-reopen a fresh session |
+| Problem solving & correction (unified) | Being stuck on a new problem and correcting a wrong one share one flow: any problem request enters it (with your attempt → compare; stuck → first ask how far you got); attempt images auto-transcribed; three-tier baseline for the correct answer (official / model solution verified by you / pending); locate the divergence and guide the correction; after conclude, a confirm card registers to the wrong-answer ledger and unmastered entries are auto-injected into later sessions |
+| Session extras | SSE streaming output, image attachments (vision models; more than 4 images are auto-batched for recognition with per-batch progress and resume-on-failure, transcripts merged into the session record), session-wide doc references, resume from history |
+| Think-first timer | In-session countdown; sending is blocked before the threshold; finishing adds a "thinking credit" note to the next message |
 
-### 上下文与模型
+### Context & Models
 
-| 功能 | 说明 |
+| Feature | Description |
 |---|---|
-| 全局模型选择 | 顶部下拉作用于所有 AI 调用；设置页模型列表化管理（逐个添加/单独测试/设为默认/删除），按接口分别配置 |
-| 上下文管理 | 发送框下方显示「已用上下文 x/y（n%）」；阈值可配置（默认 80%），超限红色提示+「强制压缩」；压缩为耗时操作，全程有提示 |
+| Global model selector | Top-bar dropdown applies to every AI call; the settings page manages models as a list per provider (add / test individually / set default / delete) |
+| Context management | Usage shown under the input box ("x / y (n%)"); auto-compress threshold is configurable (default 80%); over-limit turns red with a "force compress" button; compression is long-running and always shows progress notices |
 
-### 记录与复习
+### Records & Review
 
-| 功能 | 说明 |
+| Feature | Description |
 |---|---|
-| Error Log | 13 列主表；复发自动 +1；复查 7 天 / 复发 3 天；状态流转 未消除→观察中→已消除 |
-| 三层分流 | 具体失分→主表；题型/习惯→练习侧重；模糊自述→弱点印象 |
-| 记录中心 | 「记录」页签统一展示 A-Level 失分表 + 雅思批改记录 + 表达积累库 + 提问记录 + 章节进度（按科目解锁/锁定章节，解锁章节的术语自动注入教练提示词，聚焦学习与复习）（数据文件保持独立，零信息丢失） |
-| 复习提醒 | 复习页签统一展示「今日全部到期」四队：失分点（逐条：出变式题/复查通过/再犯）+ 术语抽查 + 表达造句 + 错题跟进（逐条「已重做掌握」）；也可线下练，「汇报线下练习结果」自然语言批量报回，AI 解析确认后更新四队记录；状态栏徽标 + 每日温和 Notice |
-| 随手记 | 一句自然语言 → AI 建议归类 → 收/改/丢 确认 |
+| Error log ledger | 13-column main table; recurrence auto +1; review in 7 days (3 if recurring); status flows unresolved → observing → resolved |
+| 3-way routing | Specific losses → ledger; question-type habits → practice focus; vague claims → weakness impressions |
+| Records center | One tab shows all ledgers: A-Level error log + IELTS grades + expression library + question log (data files stay separate — zero information loss) |
+| Review reminders | The Review tab shows today's full due list in four queues: error-log points (per item: variant question / passed / recurred), term drills, expression sentence drills, wrong-answer follow-up (per-item "mastered after redo"); you can also practice offline — report results in natural language for batch parsing, or give per-item feedback directly; plus status-bar badge and one gentle daily notice |
+| Quick capture | One natural-language sentence → AI suggests a category → accept / edit / discard |
 
-### 弱点分析
+### Weakness Analysis
 
-| 功能 | 说明 |
+| Feature | Description |
 |---|---|
-| 分析引擎 | 提问热点 × 复发热点 × 表达码趋势 × 术语/复查堆积，纯本地统计，单信号 ≥3 条才出建议 |
-| 建议卡片 | 落盘 `建议/`；看建议/不准确反馈回路；同意后一次性生成学习建议（不排日程表） |
-| 周报导出 | `周报/{ISO周}.md` 六块统计（求助/失分复发/复习/术语/雅思/建议） |
-| 进阶角 | 按阶段给进阶考试指引（G10 UKMT → G11 MAT/TMUA → G12 STEP/PAT/ESAT），一键思维题会话+自动计时 |
+| Insight engine | Question hotspots × recurrence hotspots × expression-code trends × term/review backlogs; pure local stats; a suggestion needs ≥3 hits on one signal |
+| Suggestion cards | Persisted under `建议/`; view/disagree feedback loop; study advice is generated once, only after consent (no schedules) |
+| Weekly report | `周报/{ISO-week}.md` with six stat blocks (help, losses & recurrence, reviews, terms, IELTS, suggestions) |
+| Advanced corner | Stage-based advanced-exam roadmap (G10 UKMT → G11 MAT/TMUA → G12 STEP/PAT/ESAT) with one-click thinking-problem sessions and auto timer |
 
-### 雅思
+### IELTS
 
-| 功能 | 说明 |
+| Feature | Description |
 |---|---|
-| 统一训练入口 | 教练「雅思写作训练」：A 完整批改 / B 段落点评 / C 讨论与异议 / D 针对练习，可混用、可中途切换 |
-| 任意笔记批改 | 打开任意笔记（题目+作文同篇，可含图片），六段输出写入「## AI 批改」，支持复批归档对比 |
-| 分数台账 | 每次批改总分与 TR/CC/LR/GRA 追加进 `雅思/批改记录.md`，即提升轨迹 |
-| 表达积累库 | 批改提取高分表达自动入库（去重），SM-2 简化间隔 1→3→7→14→30→60 天，到期造句抽查 |
-| 口语训练 | 教练「雅思口语训练」：A 完整模考（Part1→2→3）/ B 单 Part 专项 / C 自由陪练 / D 讨论与复盘；延迟限量纠错、首次校准定阶段目标（循序渐进到 7.5）、Band 7 证据式评分（区间不讨好）；终训评分进 `雅思/口语记录.md` 与写作趋势并排，口语错题进现有错题本（SP/GR/VX），高分表达进积累库；语音链路（阿里云）：🎤 按住说话 ASR 识别自动发送、考官回复按句 TTS 播报可打断、录音统一 16k WAV（可存 vault），未配置密钥自动退化为文字模式；P 维度发音评测待 P5c |
+| Unified entry | Coach "IELTS Writing": A full grading / B paragraph commentary / C discussion & dispute / D targeted practice — freely mixed and switchable mid-session |
+| Grade any note | Open any note (task + essay, images included); six-part output written to `## AI 批改`; re-grading archives the previous version for comparison |
+| Score ledger | Every grade appends overall + TR/CC/LR/GRA to `雅思/批改记录.md` — your improvement trajectory |
+| Expression library | High-score expressions auto-collected (deduplicated) with simplified SM-2 intervals 1→3→7→14→30→60 days and due sentence drills |
+| Speaking training | Coach "IELTS Speaking": A full mock exam (Part 1→2→3) / B single-part focus / C free practice / D discussion & review; delayed & limited corrections, first-session calibration with staged targets (stepwise path to 7.5), evidence-based Band-7 scoring (ranges, no flattery); final scores go to `雅思/口语记录.md` alongside the writing trend, speaking mistakes to the existing wrong-answer ledger (SP/GR/VX), upgraded expressions to the library; voice pipeline (Aliyun NLS): 🎤 hold-to-talk ASR with auto-send, examiner replies read aloud sentence-by-sentence via TTS (interruptible), recordings normalized to 16k WAV (optionally saved); falls back to text mode when keys are unset; P-dimension pronunciation eval awaits P5c |
 
-## 数据位置（全部在 vault 内，git / iCloud 可同步）
+## Data Locations (all inside the vault, syncable via git / iCloud)
 
 ```
 vault/StudyCoach/
-├── 档案.md          # 学生参数 frontmatter（设置页可改）
-├── 三年路线图.md
-├── prompts/         # 教练提示词（含 ```opening 围栏），可直接编辑
-├── 建议/            # 弱点建议卡片
-├── 雅思/            # 作文/ 口语/ 批改记录.md（台账）/ 口语记录.md（台账）/ 表达积累库.md
-├── 周报/            # 每周统计（幂等覆盖）
-├── 记录/            # error-log / 错题本 / 概念地图 / 提问记录 / 术语清单 / 练习侧重 / 弱点印象 / 统计分析 / 进展 / 学习日志
-└── 会话/            # 教练对话存档（无交互不落盘）
+├── 档案.md          # student profile (frontmatter, editable in settings)
+├── 三年路线图.md    # 3-year roadmap
+├── prompts/         # coach prompts (with ```opening fences), directly editable
+├── 建议/            # weakness suggestion cards
+├── 雅思/            # essays / speaking reports / grade ledger / speaking ledger / expression library
+├── 周报/            # weekly reports (idempotent overwrite)
+├── 记录/            # error log, wrong-answer ledger, concept map, question log, terms, practice focus, impressions, stats, progress, diary
+└── 会话/            # session archives (only written if there was interaction)
 ```
 
-## 安装
+## Installation
 
 ```bash
 npm install
@@ -80,29 +82,30 @@ npm run build
 ./install.sh /path/to/your/vault
 ```
 
-然后在 Obsidian：设置 → 第三方插件 → 启用 **A-Level Study Coach** → 插件设置里配置 LLM（OpenAI 兼容端点或 Anthropic 原生；Key 只存本机）。
+Then in Obsidian: Settings → Community plugins → enable **A-Level Study Coach** → configure the LLM
+in plugin settings (OpenAI-compatible endpoint or native Anthropic; the API key stays on your machine).
 
-## 开发
+## Development
 
 ```bash
 npm run dev        # esbuild watch
 npm run typecheck  # tsc --noEmit
-npm test           # UT + FVT 全量套件（每次改动必须全绿）
+npm test           # full UT + FVT suite (must stay green on every change)
 ```
 
-测试体系（test/，基于 FakeVault 隔离 obsidian，node 直接跑）：
+Test suite (test/, obsidian isolated via FakeVault, runs directly in node):
 
-| 层 | 范围 |
+| Layer | Scope |
 |---|---|
-| UT | utils / errorlog / services / insight / ielts / report：解析、入库规则、状态机、分析阈值、批改容错、周报统计 |
-| FVT: session | 完整求助闭环：注入→结题→打标+入库→复发→存档续聊 |
-| FVT: dataflow | 冷启动三层分流、复习流转、分析循环 |
-| FVT: ielts | 批改闭环：回填→分数入库→表达去重→趋势短板 |
+| UT | utils / errorlog / services / insight / ielts / report: parsing, ledger rules, state machines, analysis thresholds, grading tolerance, report stats |
+| FVT: session | Full help loop: injection → conclude → tagging + ledger → recurrence → archive & resume |
+| FVT: dataflow | Cold-start 3-way routing, review flow, analysis cycle |
+| FVT: ielts | Grading closed loop: write-back → scores ledger → expression dedup → trend weak spots |
 
-## 已知限制（刻意不做）
+## Known Limitations (by design)
 
-- 术语/表达抽查弹窗非流式（回复短，无需流式）
-- 雅思听力/阅读不做批改打卡（线下主学习范畴）；口语语音依赖阿里云密钥（未配置时文字模式）；P 维度发音评测待 P5c
-- 周报/雷达为文本统计，不引入图表库（保持轻量）
-- prompt 模板更新不覆盖 vault 已存在文件（用户修改优先）
-- 流式依赖 fetch；提供商拦截 CORS 时换 OpenAI 兼容网关
+- Term/expression drill modals are non-streaming (replies are short)
+- No IELTS listening/reading features (offline-learning scope); speaking voice requires Aliyun keys (text mode otherwise); P-dimension pronunciation eval awaits P5c
+- Reports/radar are plain-text stats; no chart libraries (kept lightweight)
+- Prompt template updates never overwrite existing vault files (user edits win)
+- Streaming relies on fetch; if a provider blocks browser CORS, use an OpenAI-compatible gateway
