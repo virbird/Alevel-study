@@ -247,6 +247,43 @@ export class StudyCoachSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName('播报链路')
+      .setDesc('合成一句英文并在这台设备上真实播放，验证「合成→解码→播放」完整链路；点击手势同时解锁 iOS AudioContext（iPad 无声时先点这个）')
+      .addButton(b =>
+        b.setButtonText('播报测试').onClick(() => {
+          void (async () => {
+            b.setButtonText('测试中…').setDisabled(true);
+            try {
+              const vcfg = await this.plugin.loadVoiceConfig();
+              const token = await this.plugin.getNlsToken();
+              const audio = await aliyunTts('Hello, this is a playback test.', { token, appKey: vcfg.aliyunAppKey, voice: vcfg.ttsVoice });
+              const ctx = new AudioContext();
+              const state0: string = ctx.state;
+              if (ctx.state === 'suspended') await ctx.resume().catch(() => undefined);
+              const buf = await ctx.decodeAudioData(audio);
+              await new Promise<void>(resolve => {
+                const src = ctx.createBufferSource();
+                src.buffer = buf;
+                src.connect(ctx.destination);
+                src.onended = (): void => resolve();
+                src.start();
+              });
+              const state1: string = ctx.state;
+              void this.plugin.voiceDiag('TTS 播报测试', `合成 ${audio.byteLength} 字节 · 解码 ${buf.duration.toFixed(1)}s · ctx ${state0}→${state1}`);
+              new Notice(`✅ 播报链路正常（ctx ${state0}→${state1}，已播放 ${buf.duration.toFixed(1)}s）`, 6000);
+              void ctx.close().catch(() => undefined);
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              void this.plugin.voiceDiag('TTS 播报测试', `失败：${msg}`);
+              new Notice(`❌ 播报链路失败：${msg}（详见 雅思/口语/语音日志.md）`, 10000);
+            } finally {
+              b.setButtonText('播报测试').setDisabled(false);
+            }
+          })();
+        }),
+      );
+
+    new Setting(containerEl)
       .setName('链路诊断')
       .setDesc('在插件环境内直接测 ASR/TTS 的 WebSocket 链路（不需要麦克风），过程与结果写入 雅思/口语/语音日志.md')
       .addButton(b =>

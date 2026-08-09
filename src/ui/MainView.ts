@@ -1285,7 +1285,10 @@ export class MainView extends ItemView {
         // iPad：未在手势内解锁时 resume 可能被拒；记日志便于排障
         await ctx.resume().catch(() => undefined);
         const st: string = ctx.state; // resume 会改变 state，需宽类型读取避免 TS 窄化误报
-        if (st !== 'running') void this.voiceLog('WARN', 'TTS 播报', `AudioContext state=${st}（iOS 未解锁：需先点一次🎤或发送）`);
+        if (st !== 'running') {
+          void this.voiceLog('WARN', 'TTS 播报', `AudioContext state=${st}（iOS 未解锁：需先点一次🎤或发送）`);
+          new Notice('iOS 音频未解锁（可能无声）：请到设置→语音训练点一次「播报测试」', 8000);
+        }
       }
       for (const s of sents) {
         if (this.ttsStopped) break;
