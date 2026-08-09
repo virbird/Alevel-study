@@ -1,0 +1,668 @@
+/* A-Level Study Coach 样式 */
+
+.asc-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 8px;
+  gap: 6px;
+}
+
+.asc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.asc-title {
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.asc-header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.asc-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 6px;
+  flex-shrink: 0;
+}
+
+.asc-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.asc-tab.is-active {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.asc-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+/* 内容超出视口时整体滚动而不是压缩卡片：flex 列容器子项默认 shrink:1 会把卡片压扁裁切 */
+.asc-body > *:not(.asc-chat) {
+  flex-shrink: 0;
+}
+
+/* 聊天气泡同理：聊天区内部滚动，气泡不被压缩 */
+.asc-chat > * {
+  flex-shrink: 0;
+}
+
+.asc-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.asc-card-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.asc-row {
+  font-size: 13px;
+  margin: 3px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.asc-strong {
+  font-weight: 600;
+}
+
+.asc-muted {
+  color: var(--text-muted);
+}
+
+.asc-divider {
+  border-top: 1px solid var(--background-modifier-border);
+  margin: 8px 0;
+}
+
+.asc-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.asc-btn {
+  border: 1px solid var(--background-modifier-border);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.asc-btn:hover {
+  background: var(--interactive-hover);
+}
+
+.asc-btn-disabled {
+  opacity: 0.45;
+}
+
+.asc-btn-small {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.asc-btn-cta {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.asc-select {
+  max-width: 100%;
+}
+
+/* 教练页签 */
+.asc-coach-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.asc-summary {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.asc-chat {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+  padding: 4px 2px;
+}
+
+.asc-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 12px;
+  text-align: center;
+}
+
+.asc-msg {
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 100%;
+}
+
+.asc-msg-user {
+  background: var(--background-secondary);
+  align-self: flex-end;
+  max-width: 92%;
+}
+
+.asc-msg-assistant {
+  border: 1px solid var(--background-modifier-border);
+  align-self: flex-start;
+  width: 100%;
+}
+
+.asc-msg p:first-child {
+  margin-top: 0;
+}
+
+.asc-msg p:last-child {
+  margin-bottom: 0;
+}
+
+.asc-logbar {
+  border: 1px dashed var(--interactive-accent);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.asc-logrow {
+  color: var(--text-muted);
+  margin: 2px 0;
+}
+
+/* IM 风格发送框：圆角容器，textarea 占满，底栏图标+提示+发送 */
+.asc-input-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 6px;
+  background: var(--background-primary);
+}
+
+.asc-input-bar textarea {
+  width: 100%;
+  resize: none;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  padding: 2px;
+}
+
+.asc-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.asc-input-hint {
+  flex: 1;
+  text-align: right;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* 记录页签 */
+.asc-table-wrap {
+  overflow: auto;
+  flex: 1;
+  max-height: 420px;
+}
+
+.asc-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+
+.asc-table th,
+.asc-table td {
+  border: 1px solid var(--background-modifier-border);
+  padding: 3px 6px;
+  text-align: left;
+}
+
+.asc-table th {
+  white-space: nowrap;
+}
+
+/* 长文本单元格自动换行，避免截断不可读 */
+.asc-table td {
+  word-break: break-word;
+  vertical-align: top;
+}
+
+/* 复习页签 */
+.asc-review-card {
+  border-left: 3px solid var(--interactive-accent);
+}
+
+/* 弹窗 */
+.asc-modal h2 {
+  margin-top: 0;
+}
+
+.asc-candidate,
+.asc-candidate-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin: 4px 0;
+  font-size: 13px;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.asc-candidate-card {
+  display: block;
+}
+
+.asc-candidate-type {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--interactive-accent);
+}
+
+.asc-candidate-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.asc-editable {
+  border-bottom: 1px dashed var(--background-modifier-border);
+  padding: 2px 0;
+  margin: 4px 0;
+}
+
+.asc-statusbar {
+  cursor: pointer;
+}
+
+/* 引用文档 chips */
+.asc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.asc-chip {
+  font-size: 11px;
+  background: var(--background-secondary);
+  border-radius: 10px;
+  padding: 2px 8px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asc-chip-x {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.asc-chip-x:hover {
+  color: var(--text-error);
+}
+
+/* 建议卡片与计时器 */
+.asc-suggest-card {
+  border-left: 3px solid var(--text-warning);
+}
+
+.asc-oxbridge-card {
+  border-left: 3px solid var(--interactive-accent);
+}
+
+.asc-timer {
+  font-size: 12px;
+  color: var(--text-warning);
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.asc-drill {
+  width: min(680px, 92vw);
+}
+
+.asc-drill-chat {
+  max-height: 46vh;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.asc-drill-summary {
+  border-top: 1px dashed var(--background-modifier-border);
+  margin-top: 8px;
+  padding-top: 6px;
+  font-size: 13px;
+}
+
+.asc-confirm-path {
+  font-weight: 600;
+  font-size: 14px;
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin: 6px 0;
+  word-break: break-all;
+}
+
+.asc-confirm-input {
+  width: 100%;
+  margin: 6px 0;
+}
+
+/* 批改任务卡片与进度条 */
+.asc-grading-card {
+  border-left: 3px solid var(--interactive-accent);
+}
+
+.asc-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--background-modifier-border);
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.asc-progress-bar {
+  height: 100%;
+  width: 35%;
+  border-radius: 3px;
+  background: var(--interactive-accent);
+  animation: asc-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes asc-indeterminate {
+  0% { margin-left: -35%; }
+  100% { margin-left: 100%; }
+}
+
+/* 顶部一行：模型（缩小）+ 标题 + 快捷操作；教练工具栏不换行（样式见文件头部 .asc-header） */
+
+.asc-header .asc-model-select {
+  max-width: 132px;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+.asc-coach-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+/* 科目选择：收起时宽度截断（约前四个字），展开下拉时 option 全名可见 */
+.asc-subject-select {
+  width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  padding: 4px 4px;
+}
+
+.asc-model-bar {
+  display: flex;
+  align-items: center;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 6px;
+}
+
+.asc-model-bar .asc-model-select {
+  flex: 1;
+  max-width: none;
+}
+
+.asc-ctx-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+
+.asc-model-select {
+  max-width: 200px;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+.asc-ctx {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.asc-ctx-warn {
+  color: var(--text-warning);
+  font-weight: 600;
+}
+
+.asc-btn-icon {
+  padding: 4px 7px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* 输入栏内图片图标（IM 风格）与待发送图片条 */
+.asc-input-bar .asc-btn-icon {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.asc-img-chips {
+  margin-bottom: 2px;
+}
+
+/* 设置页模型管理列表 */
+.asc-model-list {
+  margin: 8px 0;
+}
+
+.asc-model-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
+.asc-model-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asc-model-star {
+  color: var(--text-warning);
+}
+
+.asc-model-badge {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.asc-model-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.asc-model-add-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.asc-model-add-row input {
+  flex: 1;
+}
+
+.asc-btn-danger {
+  color: var(--text-error);
+}
+
+/* 超限强制压缩按钮：红色强调 */
+.asc-ctx-row .asc-btn-danger {
+  border-color: var(--text-error);
+  font-weight: 600;
+}
+
+/* 复习队列卡片：标题行（折叠+徽标+操作）与可折叠主体，强化分区 */
+.asc-queue-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.asc-queue-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--background-secondary);
+}
+
+.asc-queue-title {
+  font-weight: 600;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.asc-queue-badge {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.asc-badge-hot {
+  color: var(--text-warning);
+  font-weight: 600;
+}
+
+.asc-fold-btn {
+  padding: 2px 8px;
+  min-width: 28px;
+}
+
+.asc-queue-body {
+  padding: 6px 10px 10px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.asc-queue-item {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-top: 6px;
+}
+
+/* 首页紧凑化：待复查卡片、动作行、卡片间距 */
+.asc-due-card {
+  border-left: 3px solid var(--text-warning);
+}
+
+.asc-home-actions {
+  margin-top: 4px;
+}
+
+.asc-card {
+  margin-bottom: 8px;
+}
+
+/* 记录中心分区标题与可点击链接 */
+.asc-section-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-top: 10px;
+  margin-bottom: 4px;
+  border-left: 3px solid var(--interactive-accent);
+  padding-left: 6px;
+}
+
+.asc-link {
+  cursor: pointer;
+  color: var(--link-color);
+}
+
+.asc-link:hover {
+  text-decoration: underline;
+}
+
+/* 选择器弹窗列表 */
+.asc-picker-list {
+  max-height: 320px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.asc-picker-item {
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asc-picker-item:hover {
+  background: var(--background-modifier-hover);
+}

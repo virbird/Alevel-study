@@ -1,0 +1,139 @@
+// ─── LLM 设置 ───────────────────────────────────────────────
+export interface LlmSettings {
+  provider: 'openai-compat' | 'anthropic';
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
+/** 语音训练设置（阿里云 NLS；未配置时口语训练退化为文字模式） */
+export interface VoiceSettings {
+  enabled: boolean;
+  aliyunAccessKeyId: string;
+  aliyunAccessKeySecret: string;
+  aliyunAppKey: string;
+  /** TTS 音色：annie 英音女声 / abby 美音女声 / andy 美音男声 */
+  ttsVoice: string;
+  /** 考官回复自动播报（可随时打断） */
+  autoPlayTts: boolean;
+  /** 录音保存到 雅思/口语/（可选附件，默认关） */
+  saveRecordings: boolean;
+}
+
+export interface ImagePart {
+  mimeType: string;   // image/png | image/jpeg | image/gif | image/webp
+  data: string;       // base64
+  name?: string;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  images?: ImagePart[];
+}
+
+// ─── 科目 ──────────────────────────────────────────────────
+export type SubjectKey = 'Maths' | 'Physics' | 'Chemistry' | 'CS' | 'Economics';
+export type ModeKey = SubjectKey | 'drill' | 'ielts' | 'speaking';
+
+export interface SubjectMeta {
+  key: ModeKey;
+  label: string;
+  /** vault prompts/ 下的模板文件名 */
+  promptFile: string;
+  /** error log 中使用的科目名 */
+  logName?: string;
+}
+
+export const SUBJECTS: SubjectMeta[] = [
+  { key: 'Maths', label: '数学 Maths', promptFile: 'prompt-maths.md', logName: 'Maths' },
+  { key: 'Physics', label: '物理 Physics', promptFile: 'prompt-physics.md', logName: 'Physics' },
+  { key: 'Chemistry', label: '化学 Chemistry', promptFile: 'prompt-chemistry.md', logName: 'Chem' },
+  { key: 'CS', label: '计算机 CS', promptFile: 'prompt-cs.md', logName: 'CS' },
+  { key: 'Economics', label: '经济 Economics', promptFile: 'prompt-economics.md', logName: 'Econ' },
+  { key: 'drill', label: '概念精练（术语训练）', promptFile: 'prompt-drill.md' },
+  { key: 'ielts', label: '雅思写作训练（批改/点评/讨论）', promptFile: 'prompt-ielts.md' },
+  { key: 'speaking', label: '雅思口语训练（模考/陪练/讨论）', promptFile: 'prompt-speaking.md' },
+];
+
+// ─── 学生档案 ───────────────────────────────────────────────
+export interface SubjectProfile {
+  level: string;   // IG / IG+AS
+  bias: string;    // IG主导 / AS主导 / IG主导（AS未开）
+  target: string;  // A*
+  language?: string;
+}
+
+export interface Profile {
+  stage: string;
+  subjects: Partial<Record<SubjectKey, SubjectProfile>>;
+  ielts: { target: number; focus: string };
+  oxbridge: { enabled: boolean; direction: string };
+  independent_minutes: number;
+}
+
+// ─── Error Log ─────────────────────────────────────────────
+export type EntryStatus = '未消除' | '观察中' | '已消除';
+
+export interface ErrorLogEntry {
+  id: string;
+  date: string;          // YYYY-MM-DD
+  subject: string;
+  level: string;         // IG / AS / IG→AS / 思维题
+  topic: string;         // 考点(EN)
+  qtype: string;         // 题型
+  code: string;          // 失分类型代码
+  desc: string;          // 一句话描述
+  fix: string;           // 正确做法
+  stdExpr: string;       // 英文标准表述
+  recurrence: number;    // 复发次数
+  status: EntryStatus;
+  reviewDate: string;    // YYYY-MM-DD
+}
+
+// ─── 会话打标 ───────────────────────────────────────────────
+export interface SessionTag {
+  date: string;
+  subject: string;
+  topic: string;
+  confusion: string;     // 概念不懂 / 会但不熟 / 卡在某步 / 术语表达 / 作文批改 / 其他
+  depth: string;         // 问一句就懂 / 需要完整引导
+}
+
+// ─── 随手记提取结果 ─────────────────────────────────────────
+export type CaptureType = 'progress' | 'error' | 'term' | 'journal';
+
+export interface CaptureCandidate {
+  type: CaptureType;
+  confidence: 'high' | 'low';
+  subject?: string;
+  text: string;          // 一句话摘要
+  topic?: string;        // type=error 时的候选考点(EN)
+  code?: string;         // type=error 时的候选失分代码
+  term?: string;         // type=term 时的术语
+}
+
+// ─── 冷启动提取结果 ─────────────────────────────────────────
+export interface OnboardProgress {
+  subject: string;
+  text: string;
+}
+
+export interface OnboardError {
+  subject?: string;
+  topic?: string;
+  code?: string;
+  desc?: string;
+  fix?: string;
+  /**
+   * specific   = 具体某题犯了具体错，进主表（变式题可消除）
+   * practice   = 题型/作答习惯倾向（成功率不高/容易口语化），进练习侧重
+   * impression = 科目级模糊印象（说不出考点），进弱点印象待验证
+   */
+  specificity?: 'specific' | 'practice' | 'impression';
+}
+
+export interface OnboardResult {
+  progress: OnboardProgress[];
+  errors: OnboardError[];
+}

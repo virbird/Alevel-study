@@ -1,2 +1,6 @@
 .DS_Store
 node_modules/
+main.js
+test/run.js
+test/smoke.js
+*.map
