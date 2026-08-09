@@ -1,7 +1,7 @@
 {
   "id": "alevel-study-coach",
   "name": "A-Level Study Coach",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "minAppVersion": "1.5.0",
   "description": "On-demand tutoring, mistake tracking, weakness detection and review reminders for A-Level and IELTS preparation. All data stays in your vault.",
   "author": "virbird",
