@@ -166,6 +166,9 @@ export class MainView extends ItemView {
   }
 
   private render(): void {
+    // 记录重建前的滚动位置：同页签重渲染后恢复，避免操作后跳回顶部找不到下拉内容
+    const prevScroll = this.bodyEl ? this.bodyEl.scrollTop : 0;
+    const prevTab = this.tab;
     const root = this.containerEl.children[1] as HTMLElement;
     root.empty();
     root.addClass('asc-root');
@@ -210,12 +213,16 @@ export class MainView extends ItemView {
     }
 
     this.bodyEl = root.createDiv({ cls: 'asc-body' });
+    const restoreScroll = (): void => {
+      if (this.tab === prevTab) this.bodyEl.scrollTop = prevScroll;
+    };
     switch (this.tab) {
-      case 'home': void this.renderDashboard(); break;
-      case 'coach': void this.renderCoach(); break;
-      case 'records': void this.renderRecords(); break;
-      case 'review': void this.renderReview(); break;
+      case 'home': void this.renderDashboard().then(restoreScroll); break;
+      case 'coach': void this.renderCoach().then(restoreScroll); break;
+      case 'records': void this.renderRecords().then(restoreScroll); break;
+      case 'review': void this.renderReview().then(restoreScroll); break;
     }
+    restoreScroll();
   }
 
   private openFile(path: string): void {
