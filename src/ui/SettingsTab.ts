@@ -269,9 +269,19 @@ export class StudyCoachSettingTab extends PluginSettingTab {
                 src.start();
               });
               const state1: string = ctx.state;
-              void this.plugin.voiceDiag('TTS 播报测试', `合成 ${audio.byteLength} 字节 · 解码 ${buf.duration.toFixed(1)}s · ctx ${state0}→${state1}`);
-              new Notice(`✅ 播报链路正常（ctx ${state0}→${state1}，已播放 ${buf.duration.toFixed(1)}s）`, 6000);
               void ctx.close().catch(() => undefined);
+              // 路径 B：<audio> 媒体元素（blob URL）——部分 iOS 配置下与 Web Audio 静音行为不同，对比测试
+              const blob = new Blob([audio], { type: 'audio/mpeg' });
+              const url = URL.createObjectURL(blob);
+              const el = new Audio(url);
+              await new Promise<void>(resolve => {
+                el.onended = (): void => resolve();
+                el.onerror = (): void => resolve();
+                void el.play().catch(() => resolve());
+              });
+              URL.revokeObjectURL(url);
+              void this.plugin.voiceDiag('TTS 播报测试', `合成 ${audio.byteLength} 字节 · 解码 ${buf.duration.toFixed(1)}s · ctx ${state0}→${state1} · 双路径（WebAudio+<audio>）已顺序播放`);
+              new Notice(`已顺序播放两条：① Web Audio（ctx ${state0}→${state1}）② 媒体元素 <audio>——哪条有声？（都无声请检查 iPad 静音开关/媒体音量）`, 12000);
             } catch (e) {
               const msg = e instanceof Error ? e.message : String(e);
               void this.plugin.voiceDiag('TTS 播报测试', `失败：${msg}`);
