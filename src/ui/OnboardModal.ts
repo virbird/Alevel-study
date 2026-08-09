@@ -41,7 +41,6 @@ export class OnboardModal extends Modal {
     const input = contentEl.createEl('textarea', {
       attr: { placeholder: '例：数学 AS 学到 differentiation 了，物理上周考试受力分解又错了，化学方程式配平感觉还行……', rows: '6' },
     });
-    input.style.width = '100%';
 
     const resultEl = contentEl.createDiv();
     let candidates: OnboardResult | null = null;
@@ -102,7 +101,7 @@ export class OnboardModal extends Modal {
           const box = row.createEl('input', { type: 'checkbox' });
           box.checked = true;
           row.createSpan({ text: `【${e.subject ?? '?'}】${e.topic || '(考点待定)'} · ${e.code || '(代码待定)'} · ${e.desc ?? ''}` });
-          checks.push({ box, kind: 'error', idx: c.errors!.indexOf(e) });
+          checks.push({ box, kind: 'error', idx: c.errors.indexOf(e) });
         });
       }
       if (practice.length) {
@@ -112,7 +111,7 @@ export class OnboardModal extends Modal {
           const box = row.createEl('input', { type: 'checkbox' });
           box.checked = true;
           row.createSpan({ text: `【${e.subject ?? '?'}】${e.desc || e.topic || '(无描述)'}` });
-          checks.push({ box, kind: 'practice', idx: c.errors!.indexOf(e) });
+          checks.push({ box, kind: 'practice', idx: c.errors.indexOf(e) });
         });
       }
       if (vague.length) {
@@ -122,7 +121,7 @@ export class OnboardModal extends Modal {
           const box = row.createEl('input', { type: 'checkbox' });
           box.checked = true;
           row.createSpan({ text: `【${e.subject ?? '?'}】${e.desc || '(无描述)'}` });
-          checks.push({ box, kind: 'impression', idx: c.errors!.indexOf(e) });
+          checks.push({ box, kind: 'impression', idx: c.errors.indexOf(e) });
         });
       }
     }
@@ -140,22 +139,22 @@ export class OnboardModal extends Modal {
               for (const ck of checks) {
                 if (!ck.box.checked) continue;
                 if (ck.kind === 'progress') {
-                  const p = c.progress![ck.idx];
+                  const p = c.progress[ck.idx];
                   await this.plugin.progress.append(p.subject, p.text, date);
                   saved++;
                 } else if (ck.kind === 'impression') {
-                  const e = c.errors![ck.idx];
+                  const e = c.errors[ck.idx];
                   if (!e.desc) continue;
                   await this.plugin.weakImpressions.append(e.subject ?? '', e.desc);
                   saved++;
                 } else if (ck.kind === 'practice') {
-                  const e = c.errors![ck.idx];
+                  const e = c.errors[ck.idx];
                   const text = e.desc || e.topic;
                   if (!text) continue;
                   await this.plugin.practiceFocus.append(e.subject ?? '', text);
                   saved++;
                 } else {
-                  const e = c.errors![ck.idx];
+                  const e = c.errors[ck.idx];
                   if (!e.topic && !e.desc) continue;
                   await this.plugin.errorLog.addEntry({
                     subject: e.subject ?? '',

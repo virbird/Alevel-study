@@ -37,7 +37,7 @@ export function percentEncode(s: string): string {
 
 /** HMAC-SHA1 → base64（Web Crypto，桌面/iPad 全平台可用，不用 Node crypto） */
 export async function hmacSha1Base64(key: string, data: string): Promise<string> {
-  const subtle = (globalThis as { crypto?: { subtle?: SubtleCrypto } }).crypto?.subtle;
+  const subtle = (window as unknown as { crypto?: { subtle?: SubtleCrypto } }).crypto?.subtle;
   if (!subtle) throw new Error('当前环境不支持 Web Crypto（无法签名阿里云请求）');
   const enc = new TextEncoder();
   const cryptoKey = await subtle.importKey('raw', enc.encode(key), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
@@ -57,7 +57,7 @@ export async function buildAliyunSignature(params: Record<string, string>, acces
 
 /** UUID（hex，无横线；阿里 NLS task_id 要求 32 位 hex） */
 export function uuidHex(): string {
-  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  const c = (window as unknown as { crypto?: { randomUUID?: () => string } }).crypto;
   if (c?.randomUUID) return c.randomUUID().replace(/-/g, '');
   let s = '';
   for (let i = 0; i < 32; i++) s += Math.floor(Math.random() * 16).toString(16);

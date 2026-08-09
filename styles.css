@@ -666,3 +666,9 @@
 .asc-picker-item:hover {
   background: var(--background-modifier-hover);
 }
+
+/* Modal 内表单控件占满宽度（替代行内 style 赋值，obsidianmd/no-static-styles-assignment） */
+.asc-modal textarea,
+.asc-modal input[type="text"] {
+  width: 100%;
+}

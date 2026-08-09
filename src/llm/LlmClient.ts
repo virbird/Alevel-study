@@ -50,7 +50,7 @@ export function withSignal<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
     signal.addEventListener('abort', onAbort, { once: true });
     p.then(
       v => { signal.removeEventListener('abort', onAbort); resolve(v); },
-      e => { signal.removeEventListener('abort', onAbort); reject(e); },
+      (e: unknown) => { signal.removeEventListener('abort', onAbort); reject(e instanceof Error ? e : new Error(String(e))); },
     );
   });
 }
@@ -191,7 +191,7 @@ export class LlmClient {
     if (res.status >= 400) {
       throw new Error(`LLM 请求失败 (${res.status})：${extractError(res.text)}`);
     }
-    const data = res.json;
+    const data = res.json as OpenAIChatResponse | null;
     const content = data?.choices?.[0]?.message?.content;
     if (typeof content !== 'string') throw new Error('LLM 返回格式异常，未找到回复内容');
     return content;
@@ -221,18 +221,28 @@ export class LlmClient {
     if (res.status >= 400) {
       throw new Error(`LLM 请求失败 (${res.status})：${extractError(res.text)}`);
     }
-    const data = res.json;
+    const data = res.json as AnthropicMessageResponse | null;
     const text = Array.isArray(data?.content)
-      ? data.content.filter((b: { type?: string }) => b?.type === 'text').map((b: { text?: string }) => b.text ?? '').join('')
+      ? data.content.filter(b => b?.type === 'text').map(b => b.text ?? '').join('')
       : '';
     if (!text) throw new Error('LLM 返回格式异常，未找到回复内容');
     return text;
   }
 }
 
+/** OpenAI 兼容接口响应体（只声明用到的字段） */
+interface OpenAIChatResponse {
+  choices?: { message?: { content?: string } }[];
+}
+
+/** Anthropic /v1/messages 响应体（只声明用到的字段） */
+interface AnthropicMessageResponse {
+  content?: { type?: string; text?: string }[];
+}
+
 function extractError(body: string): string {
   try {
-    const j = JSON.parse(body);
+    const j = JSON.parse(body) as { error?: { message?: string }; message?: string } | null;
     return j?.error?.message ?? j?.message ?? body.slice(0, 200);
   } catch {
     return body.slice(0, 200);

@@ -21,7 +21,7 @@ function parseYamlLite(text: string): Record<string, unknown> {
     if (nested && currentKey) {
       const obj = result[currentKey];
       if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-        (obj as Record<string, unknown>)[nested[1]] = unquote(nested[2]) as string;
+        (obj as Record<string, unknown>)[nested[1]] = unquote(nested[2]);
       }
       continue;
     }

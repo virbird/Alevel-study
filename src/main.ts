@@ -99,7 +99,14 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   private gradingTicker: number | null = null;
   private statusBarEl!: HTMLElement;
 
-  async onload(): Promise<void> {
+  onload(): void {
+    void (async () => {
+      await this.initAsync();
+    })();
+  }
+
+  /** 异步初始化（onload 保持同步签名，符合 Plugin 基类约定） */
+  private async initAsync(): Promise<void> {
     await this.loadSettings();
 
     this.vaultService = new VaultService(this.app, this.manifest.dir ?? '');
@@ -142,7 +149,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
 
     this.statusBarEl = this.addStatusBarItem();
     this.statusBarEl.addClass('asc-statusbar');
-    this.statusBarEl.addEventListener('click', () => this.activateView());
+    this.statusBarEl.addEventListener('click', () => void this.activateView());
 
     await this.vaultService.init();
     void this.refreshStatusBar();

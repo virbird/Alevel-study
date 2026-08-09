@@ -66,7 +66,7 @@ export class IeltsService {
     const path = `${ESSAY_DIR}/${todayStr()}-task${task}-${safe}.md`;
     const fm = { task: String(task), date: todayStr(), overall: '', tr: '', cc: '', lr: '', gra: '' };
     const body = `\n# 雅思 Task${task} · ${title || todayStr()}\n\n## 原文\n\n（在这里粘贴作文全文）\n\n## AI 批改\n\n（尚未批改：在雅思页签点「批改当前作文」）\n\n## 高分表达\n\n（批改后自动提取）\n`;
-    await this.vault.write(path, stringifyFrontmatter(fm as Record<string, string>, body));
+    await this.vault.write(path, stringifyFrontmatter(fm, body));
     return path;
   }
 
@@ -163,10 +163,10 @@ export class IeltsService {
   private collectImageHits(body: string): { start: number; end: number; src: string }[] {
     const hits: { start: number; end: number; src: string }[] = [];
     for (const m of body.matchAll(/!\[\[([^\]|#]+?)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g)) {
-      hits.push({ start: m.index!, end: m.index! + m[0].length, src: m[1].trim() });
+      hits.push({ start: m.index, end: m.index + m[0].length, src: m[1].trim() });
     }
     for (const m of body.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)) {
-      hits.push({ start: m.index!, end: m.index! + m[0].length, src: m[1].trim() });
+      hits.push({ start: m.index, end: m.index + m[0].length, src: m[1].trim() });
     }
     hits.sort((a, b) => a.start - b.start);
     return hits;

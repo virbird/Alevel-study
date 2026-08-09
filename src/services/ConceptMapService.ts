@@ -33,7 +33,7 @@ export class ConceptMapService {
         chapter: r[0],
         concept: r[1],
         subject: r[2],
-        status: (r[3] === '预习' || r[3] === '待详学' ? r[3] : '已学') as ConceptStatus,
+        status: r[3] === '预习' || r[3] === '待详学' ? r[3] : '已学',
         date: r[4],
       }));
   }

@@ -1,15 +1,19 @@
 import { App, MarkdownRenderer, Modal, Notice, Setting, TFile } from 'obsidian';
 import type ALevelStudyCoachPlugin from '../main';
+import { PromptModal } from './PromptModal';
 import type { Suggestion } from '../services/SuggestionService';
 import { buildDrillSystemPrompt } from '../services/TermService';
 import type { TermEntry } from '../services/TermService';
 import type { ChatMessage } from '../types';
 import { extractJson } from '../llm/LlmClient';
+import { createRenderScope } from './RenderScope';
 
 /**
  * 建议卡片详情：展示证据 → 同意后生成学习建议（两段式，征得同意是硬性步骤）。
  */
 export class SuggestionModal extends Modal {
+  private renderScope = createRenderScope();
+
   constructor(app: App, private plugin: ALevelStudyCoachPlugin, private suggestion: Suggestion, private onChanged: () => void) {
     super(app);
   }
@@ -18,10 +22,10 @@ export class SuggestionModal extends Modal {
     const { contentEl } = this;
     contentEl.addClass('asc-modal');
     contentEl.createEl('h2', { text: this.suggestion.title });
-    contentEl.createEl('div', { text: `${this.suggestion.kind} · ${this.suggestion.created} · ${this.suggestion.status}`, cls: 'asc-muted' });
+    contentEl.createDiv( { text: `${this.suggestion.kind} · ${this.suggestion.created} · ${this.suggestion.status}`, cls: 'asc-muted' });
 
     const bodyEl = contentEl.createDiv();
-    void MarkdownRenderer.render(this.app, this.suggestion.body, bodyEl, '', this.plugin);
+    void MarkdownRenderer.render(this.app, this.suggestion.body, bodyEl, '', this.renderScope);
 
     const bar = new Setting(contentEl);
     if (this.suggestion.status === '待处理' || !this.suggestion.hasPlan) {
@@ -41,7 +45,7 @@ export class SuggestionModal extends Modal {
               );
               const planEl = contentEl.createDiv();
               planEl.createEl('h3', { text: '学习建议（带回线下执行）' });
-              void MarkdownRenderer.render(this.app, plan, planEl, '', this.plugin);
+              void MarkdownRenderer.render(this.app, plan, planEl, '', this.renderScope);
               bar.settingEl.remove();
               new Notice('学习建议已生成并保存到建议文件');
               this.onChanged();
@@ -60,18 +64,22 @@ export class SuggestionModal extends Modal {
     );
     if (this.suggestion.status === '待处理') {
       bar.addButton(b =>
-        b.setButtonText('不准确').onClick(async () => {
-          const note = window.prompt('哪里判断得不准确？（会记录到建议文件，帮助之后的分析）') ?? '';
-          await this.plugin.suggestions.setStatus(this.suggestion.file, '不准确', note || undefined);
-          new Notice('已标记为不准确');
-          this.onChanged();
-          this.close();
+        b.setButtonText('不准确').onClick(() => {
+          new PromptModal(this.app, '哪里判断得不准确？', '会记录到建议文件，帮助之后的分析', note => {
+            void (async () => {
+              await this.plugin.suggestions.setStatus(this.suggestion.file, '不准确', note || undefined);
+              new Notice('已标记为不准确');
+              this.onChanged();
+              this.close();
+            })();
+          }).open();
         }),
       );
     }
   }
 
   onClose(): void {
+    this.renderScope.dispose();
     this.contentEl.empty();
   }
 }
@@ -86,6 +94,7 @@ export class DrillModal extends Modal {
   private messages: ChatMessage[] = [];
   private busy = false;
   private finished = false;
+  private renderScope = createRenderScope();
 
   constructor(app: App, private plugin: ALevelStudyCoachPlugin, private sampled: TermEntry[], private onDone: () => void) {
     super(app);
@@ -153,9 +162,10 @@ export class DrillModal extends Modal {
 
   private renderMessages(): void {
     this.chatEl.empty();
+    this.renderScope.reset();
     for (const m of this.messages) {
       const bubble = this.chatEl.createDiv({ cls: 'asc-msg asc-msg-' + m.role });
-      void MarkdownRenderer.render(this.app, m.content, bubble, '', this.plugin);
+      void MarkdownRenderer.render(this.app, m.content, bubble, '', this.renderScope);
     }
     this.chatEl.scrollTop = this.chatEl.scrollHeight;
     this.sendBtn.setText(this.busy ? '回复中…' : '发送');
@@ -176,13 +186,14 @@ export class DrillModal extends Modal {
       if (next) summary.push(`${r.term}：${r.pass ? '通过' : '未通过'} → ${next}`);
     }
     const el = this.contentEl.createDiv({ cls: 'asc-drill-summary' });
-    el.createEl('div', { text: '抽查结果已写入术语清单：', cls: 'asc-strong' });
-    for (const s of summary) el.createEl('div', { text: s, cls: 'asc-row' });
+    el.createDiv( { text: '抽查结果已写入术语清单：', cls: 'asc-strong' });
+    for (const s of summary) el.createDiv( { text: s, cls: 'asc-row' });
     new Notice('抽查完成，术语状态已更新');
     this.onDone();
   }
 
   onClose(): void {
+    this.renderScope.dispose();
     this.contentEl.empty();
   }
 }

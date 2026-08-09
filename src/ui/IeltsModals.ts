@@ -3,6 +3,7 @@ import type ALevelStudyCoachPlugin from '../main';
 import type { ExpressionRow } from '../services/ExpressionService';
 import type { ChatMessage } from '../types';
 import { extractJson } from '../llm/LlmClient';
+import { createRenderScope } from './RenderScope';
 
 /** 批改前确认目标文件：路径可编辑（vault 文件联想快速指定），显示预览，避免误批改 */
 export class GradeConfirmModal extends Modal {
@@ -14,10 +15,9 @@ export class GradeConfirmModal extends Modal {
     const { contentEl } = this;
     contentEl.addClass('asc-modal');
     contentEl.createEl('h2', { text: '确认批改目标' });
-    contentEl.createEl('div', { text: '将批改以下笔记（题目与作文可同篇，图片会发给视觉模型）。可输入或从列表选择 vault 中的文件：', cls: 'asc-muted' });
+    contentEl.createDiv( { text: '将批改以下笔记（题目与作文可同篇，图片会发给视觉模型）。可输入或从列表选择 vault 中的文件：', cls: 'asc-muted' });
 
     const input = contentEl.createEl('input', { type: 'text', value: this.path });
-    input.style.width = '100%';
     input.addClass('asc-confirm-input');
     const listEl = contentEl.createDiv({ cls: 'asc-picker-list' });
     const info = contentEl.createDiv({ cls: 'asc-muted' });
@@ -115,6 +115,7 @@ export class ExpressionDrillModal extends Modal {
   private messages: ChatMessage[] = [];
   private busy = false;
   private finished = false;
+  private renderScope = createRenderScope();
 
   constructor(app: App, private plugin: ALevelStudyCoachPlugin, private rows: ExpressionRow[]) {
     super(app);
@@ -180,9 +181,10 @@ export class ExpressionDrillModal extends Modal {
 
   private renderMessages(): void {
     this.chatEl.empty();
+    this.renderScope.reset();
     for (const m of this.messages) {
       const bubble = this.chatEl.createDiv({ cls: 'asc-msg asc-msg-' + m.role });
-      void MarkdownRenderer.render(this.app, m.content, bubble, '', this.plugin);
+      void MarkdownRenderer.render(this.app, m.content, bubble, '', this.renderScope);
     }
     this.chatEl.scrollTop = this.chatEl.scrollHeight;
     this.sendBtn.setText(this.busy ? '回复中…' : '发送');
@@ -202,12 +204,13 @@ export class ExpressionDrillModal extends Modal {
       if (next) summary.push(`${r.expr}：${r.pass ? '通过' : '未通过'} → ${next.status === '已掌握' ? '已掌握' : `下次 ${next.next}`}`);
     }
     const el = this.contentEl.createDiv({ cls: 'asc-drill-summary' });
-    el.createEl('div', { text: '抽查结果已更新间隔调度：', cls: 'asc-strong' });
-    for (const s of summary) el.createEl('div', { text: s, cls: 'asc-row' });
+    el.createDiv( { text: '抽查结果已更新间隔调度：', cls: 'asc-strong' });
+    for (const s of summary) el.createDiv( { text: s, cls: 'asc-row' });
     new Notice('表达抽查完成');
   }
 
   onClose(): void {
+    this.renderScope.dispose();
     this.contentEl.empty();
   }
 }

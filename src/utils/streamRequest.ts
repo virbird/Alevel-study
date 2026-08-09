@@ -1,4 +1,6 @@
-// 流式请求（fork 自 AI Study Buddy）：fetch SSE（桌面 Electron）+ XHR onprogress 降级（iPad）
+// 流式请求（fork 自 AI Study Buddy）：fetch SSE（桌面 Electron）+ XHR onprogress 降级（iPad）。
+// 说明：此处必须用 fetch/XHR 而非 obsidian 的 requestUrl——requestUrl 一次性返回完整响应，
+// 不支持流式（SSE）读取；非流式请求（LlmClient.chat）已全部使用 requestUrl。
 export interface StreamRequestOptions {
   url: string;
   method: string;

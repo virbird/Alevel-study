@@ -1,6 +1,11 @@
 // 测试基建：轻量断言 + FakeVault（隔离 obsidian，服务层全部可测）
 import type { VaultService } from '../src/services/VaultService';
 
+// node 测试环境无 window：映射到 globalThis（node 自带 crypto，供 audioUtils 签名/UUID 使用）
+if (typeof window === 'undefined') {
+  (globalThis as unknown as { window: unknown }).window = globalThis;
+}
+
 let passed = 0;
 let failed = 0;
 const failures: string[] = [];

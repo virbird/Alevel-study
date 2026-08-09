@@ -15,7 +15,6 @@ export class SessionHistoryModal extends Modal {
       return;
     }
     const filter = contentEl.createEl('input', { attr: { placeholder: '筛选……', type: 'text' } });
-    filter.style.width = '100%';
     const list = contentEl.createDiv({ cls: 'asc-picker-list' });
 
     const draw = () => {
@@ -54,7 +53,6 @@ export class AttachPickerModal extends Modal {
     contentEl.createEl('p', { text: '选择 vault 中的笔记，其内容将注入本轮会话的上下文（单篇最多 2 万字符）。' });
 
     const filter = contentEl.createEl('input', { attr: { placeholder: '搜索文件名……', type: 'text' } });
-    filter.style.width = '100%';
     const list = contentEl.createDiv({ cls: 'asc-picker-list' });
 
     const draw = () => {
@@ -104,7 +102,6 @@ export class ImagePickerModal extends Modal {
     contentEl.createEl('p', { text: '选择 vault 中的图片（png/jpg/gif/webp，单张 ≤5MB，每条消息最多 4 张），随下一条消息发给模型。' });
 
     const filter = contentEl.createEl('input', { attr: { placeholder: '搜索图片文件名……', type: 'text' } });
-    filter.style.width = '100%';
     const list = contentEl.createDiv({ cls: 'asc-picker-list' });
 
     const draw = () => {

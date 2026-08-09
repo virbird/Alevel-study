@@ -38,7 +38,6 @@ export class CaptureModal extends Modal {
     const input = contentEl.createEl('textarea', {
       attr: { placeholder: '例：今天讲了 moments，杠杆平衡的题第一次做基本都对', rows: '3' },
     });
-    input.style.width = '100%';
 
     const resultEl = contentEl.createDiv();
 
@@ -80,19 +79,19 @@ export class CaptureModal extends Modal {
   private renderCandidate(el: HTMLElement, c: CaptureCandidate, source: string): void {
     el.empty();
     const card = el.createDiv({ cls: 'asc-candidate-card' });
-    card.createEl('div', { text: `归类：${TYPE_LABEL[c.type] ?? c.type}`, cls: 'asc-candidate-type' });
-    const summary = card.createEl('div', { text: c.text || source });
+    card.createDiv( { text: `归类：${TYPE_LABEL[c.type] ?? c.type}`, cls: 'asc-candidate-type' });
+    const summary = card.createDiv( { text: c.text || source });
     summary.contentEditable = 'true';
     summary.addClass('asc-editable');
     if (c.type === 'error') {
-      card.createEl('div', {
+      card.createDiv( {
         text: `【${c.subject || '?'}】${c.topic || '(考点待定)'} · 代码 ${c.code || '(待定)'}`,
         cls: 'asc-candidate-meta',
       });
     } else if (c.type === 'term') {
-      card.createEl('div', { text: `术语：${c.term || '(待定)'}${c.subject ? ' · ' + c.subject : ''}`, cls: 'asc-candidate-meta' });
+      card.createDiv( { text: `术语：${c.term || '(待定)'}${c.subject ? ' · ' + c.subject : ''}`, cls: 'asc-candidate-meta' });
     } else if (c.subject) {
-      card.createEl('div', { text: `科目：${c.subject}`, cls: 'asc-candidate-meta' });
+      card.createDiv( { text: `科目：${c.subject}`, cls: 'asc-candidate-meta' });
     }
 
     new Setting(el)

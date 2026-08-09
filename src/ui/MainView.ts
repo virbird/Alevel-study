@@ -1,4 +1,4 @@
-import { ItemView, MarkdownRenderer, Notice, TFile, WorkspaceLeaf } from 'obsidian';
+import { ItemView, MarkdownRenderer, Notice, Platform, TFile, WorkspaceLeaf } from 'obsidian';
 import type ALevelStudyCoachPlugin from '../main';
 import { SUBJECTS } from '../types';
 import type { ChatMessage, ErrorLogEntry, ModeKey, SessionTag } from '../types';
@@ -8,8 +8,10 @@ import { parseFrontmatter } from '../utils/markdown';
 import { ROOT } from '../services/VaultService';
 import { OnboardModal } from './OnboardModal';
 import { CaptureModal } from './CaptureModal';
+import { PromptModal } from './PromptModal';
 import { SessionHistoryModal, AttachPickerModal, ImagePickerModal } from './PickerModals';
 import { SuggestionModal, DrillModal, OfflineFeedbackModal } from './InsightModals';
+import { createRenderScope } from './RenderScope';
 import { EXPR_LIB_PATH, GRADE_LEDGER_PATH, parseIeltsResult } from '../services/IeltsService';
 import { WRONG_ANSWER_PATH } from '../services/WrongAnswerService';
 import { CONCEPT_MAP_PATH } from '../services/ConceptMapService';
@@ -19,7 +21,6 @@ import { AudioRecorder } from '../voice/AudioRecorder';
 import { aliyunAsr, aliyunTts } from '../voice/AliyunNls';
 import { splitForTts } from '../voice/audioUtils';
 import { oxbridgeGuidance } from '../services/ReportService';
-import type { TermEntry } from '../services/TermService';
 import type { ImagePart } from '../types';
 import { ContextCompressor } from '../services/ContextCompressor';
 import { estimateTokens, formatTokens } from '../utils/tokens';
@@ -89,6 +90,8 @@ export class MainView extends ItemView {
     startedAt: number;
   } | null = null;
   private imgRecTicker: number | null = null;
+  /** Markdown 渲染作用域：随视图关闭卸载，避免用插件主实例作组件造成泄漏 */
+  private renderScope = createRenderScope();
 
   constructor(leaf: WorkspaceLeaf, private plugin: ALevelStudyCoachPlugin) {
     super(leaf);
@@ -107,6 +110,7 @@ export class MainView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    this.renderScope.dispose();
     // 防止漏数据：关闭视图时把未存档的消息自动落盘（含其他科目槽里的未结束会话）
     await this.archiveIfNeeded(false);
     for (const [mode, slot] of Object.entries(this.slots)) {
@@ -172,11 +176,13 @@ export class MainView extends ItemView {
     }
     gSel.value = gCur;
     gSel.setAttr('title', `全局模型：影响教练/批改/抽查等所有 AI 调用。当前：${gCur}${gDef ? `，默认：${gDef}` : ''}`);
-    gSel.addEventListener('change', async () => {
-      this.plugin.settings.llm.model = gSel.value;
-      await this.plugin.saveSettings();
-      new Notice(`模型已切换：${gSel.value}`);
-      this.render();
+    gSel.addEventListener('change', () => {
+      void (async () => {
+        this.plugin.settings.llm.model = gSel.value;
+        await this.plugin.saveSettings();
+        new Notice(`模型已切换：${gSel.value}`);
+        this.render();
+      })();
     });
     header.createSpan({ text: '🎓 A-Level Study Coach', cls: 'asc-title' });
     const actions = header.createDiv({ cls: 'asc-header-actions' });
@@ -226,19 +232,22 @@ export class MainView extends ItemView {
     if (pending.length) {
       for (const s of pending.slice(0, 3)) {
         const card = el.createDiv({ cls: 'asc-card asc-suggest-card' });
-        card.createEl('div', { text: s.title, cls: 'asc-card-title' });
-        card.createEl('div', { text: `${s.kind} · ${s.created}`, cls: 'asc-muted' });
+        card.createDiv( { text: s.title, cls: 'asc-card-title' });
+        card.createDiv( { text: `${s.kind} · ${s.created}`, cls: 'asc-muted' });
         const btns = card.createDiv({ cls: 'asc-row' });
         btns.createEl('button', { text: '看建议', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => {
           new SuggestionModal(this.app, this.plugin, s, () => this.render()).open();
         });
-        btns.createEl('button', { text: '不准确', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
-          const note = window.prompt('哪里判断得不准确？') ?? '';
-          await this.plugin.suggestions.setStatus(s.file, '不准确', note || undefined);
-          this.render();
+        btns.createEl('button', { text: '不准确', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+          new PromptModal(this.app, '哪里判断得不准确？', '', note => {
+            void (async () => {
+              await this.plugin.suggestions.setStatus(s.file, '不准确', note || undefined);
+              this.render();
+            })();
+          }).open();
         });
       }
-      if (pending.length > 3) el.createEl('div', { text: `… 还有 ${pending.length - 3} 张待处理建议卡片`, cls: 'asc-muted' });
+      if (pending.length > 3) el.createDiv( { text: `… 还有 ${pending.length - 3} 张待处理建议卡片`, cls: 'asc-muted' });
     } else {
       el.createDiv({ text: '暂无待处理的建议卡片——弱点信号达到阈值时会自动出现在这里。', cls: 'asc-hint' });
     }
@@ -251,7 +260,7 @@ export class MainView extends ItemView {
       dueRow.createSpan({ text: `📌 ${radar.dueCount} 条失分点待复查`, cls: 'asc-strong' });
       dueRow.createEl('button', { text: '去处理', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => { this.tab = 'review'; this.render(); });
     } else if (!pending.length) {
-      el.createEl('div', { text: '✓ 今天没有待办——主学习在线下，需要协助时随时来。', cls: 'asc-hint' });
+      el.createDiv( { text: '✓ 今天没有待办——主学习在线下，需要协助时随时来。', cls: 'asc-hint' });
     }
 
     // 3. 状态概览（一张紧凑卡片，每域一行；详细数据去「记录」页签）
@@ -260,17 +269,17 @@ export class MainView extends ItemView {
     const exprs = await this.plugin.expressions.load();
     const dueExprs = await this.plugin.expressions.due();
     const ov = el.createDiv({ cls: 'asc-card' });
-    ov.createEl('div', { text: '状态概览', cls: 'asc-card-title' });
+    ov.createDiv( { text: '状态概览', cls: 'asc-card-title' });
     if (scores.length) {
       const latest = scores[scores.length - 1];
       const gap = latest.overall !== null ? profile.ielts.target - latest.overall : null;
       const weak = this.plugin.ielts.weakestDimension(latest);
-      ov.createEl('div', {
+      ov.createDiv( {
         text: `📝 雅思 最近 ${latest.overall ?? '-'}${gap !== null && gap > 0 ? ` · 距目标差 ${gap.toFixed(1)}` : gap !== null ? ' · 达标 🎉' : ''}${weak ? ` · 短板 ${weak}` : ''} · 表达库 ${exprs.length}${dueExprs.length ? `（到期 ${dueExprs.length}）` : ''}`,
         cls: 'asc-row',
       });
     } else {
-      ov.createEl('div', { text: `📝 雅思 目标 ${profile.ielts.target}（${profile.ielts.focus}）· 还没有批改记录`, cls: 'asc-row' });
+      ov.createDiv( { text: `📝 雅思 目标 ${profile.ielts.target}（${profile.ielts.focus}）· 还没有批改记录`, cls: 'asc-row' });
     }
     const curCodes = this.plugin.engine.codeCountsRange(entries, -1, 14);
     const prevCodes = this.plugin.engine.codeCountsRange(entries, 14, 28);
@@ -282,13 +291,13 @@ export class MainView extends ItemView {
     }).join(' · ');
     const relapse = entries.filter(e => e.recurrence >= 2 && e.status !== '已消除')
       .sort((a, b) => b.recurrence - a.recurrence).slice(0, 2);
-    ov.createEl('div', {
+    ov.createDiv( {
       text: `🎯 弱点 未消除 ${radar.unresolvedCount} · 表达码 ${exprTrend}${relapse.length ? ` · 复发：${relapse.map(e => `${e.topic}×${e.recurrence}`).join('、')}` : ''}`,
       cls: 'asc-row',
     });
     const unstable = terms.filter(t => t.status !== '已稳定').length;
-    ov.createEl('div', { text: `📚 术语 待抽查 ${unstable} · 已稳定 ${terms.filter(t => t.status === '已稳定').length} · 共 ${terms.length}`, cls: 'asc-row' });
-    ov.createEl('div', { text: `🎓 ${profile.stage} · 目标全 A* · 牛剑方向 ${profile.oxbridge.direction}`, cls: 'asc-row asc-muted' });
+    ov.createDiv( { text: `📚 术语 待抽查 ${unstable} · 已稳定 ${terms.filter(t => t.status === '已稳定').length} · 共 ${terms.length}`, cls: 'asc-row' });
+    ov.createDiv( { text: `🎓 ${profile.stage} · 目标全 A* · 牛剑方向 ${profile.oxbridge.direction}`, cls: 'asc-row asc-muted' });
 
     // 4. 动作（一排小按钮，只留教练会话覆盖不了的独立功能；
     // 求助去「教练」页签，批改作文用命令面板「雅思：批改当前作文」）
@@ -333,7 +342,7 @@ export class MainView extends ItemView {
     const card = el.createDiv({ cls: 'asc-card asc-grading-card' });
     if (task.status === 'running') {
       card.scrollIntoView({ block: 'nearest' });
-      const label = card.createEl('div', { cls: 'asc-card-title' });
+      const label = card.createDiv( { cls: 'asc-card-title' });
       const setText = () => label.setText(`🕐 正在批改：${task.basename} · 已等待 ${this.plugin.gradingTask?.elapsed ?? 0} 秒（含图片通常 1–4 分钟）——可以先切走干别的，回来看结果`);
       setText();
       card.createDiv({ cls: 'asc-progress' }).createDiv({ cls: 'asc-progress-bar' });
@@ -346,8 +355,8 @@ export class MainView extends ItemView {
       }, 1000);
     } else {
       const icon = { success: '✅', cancelled: '⏹', timeout: '⏱', failed: '❌' }[task.status];
-      card.createEl('div', { text: `${icon} 批改${task.status === 'success' ? '成功' : task.status === 'cancelled' ? '已取消' : task.status === 'timeout' ? '超时' : '失败'}：${task.basename}`, cls: 'asc-card-title' });
-      card.createEl('div', { text: task.message, cls: 'asc-row asc-muted' });
+      card.createDiv( { text: `${icon} 批改${task.status === 'success' ? '成功' : task.status === 'cancelled' ? '已取消' : task.status === 'timeout' ? '超时' : '失败'}：${task.basename}`, cls: 'asc-card-title' });
+      card.createDiv( { text: task.message, cls: 'asc-row asc-muted' });
       const btns = card.createDiv({ cls: 'asc-row' });
       if (task.status === 'success') {
         btns.createEl('button', { text: '打开批改后的笔记', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => this.openFile(task.path));
@@ -447,11 +456,12 @@ export class MainView extends ItemView {
     if (this.messages.length === 0) {
       chatEl.createDiv({ text: this.systemPrompt ? '会话已开始，把题目或问题发过来。' : '正在开启会话…', cls: 'asc-empty' });
     }
+    this.renderScope.reset();
     for (const m of this.messages) {
       const bubble = chatEl.createDiv({ cls: 'asc-msg asc-msg-' + m.role });
       // 展示时剥离机器用 JSON 块（ieltsResult/sessionTag），交互由下方入库卡片承担
       const display = m.role === 'assistant' ? stripMachineBlocks(m.content) : m.content;
-      void MarkdownRenderer.render(this.app, display, bubble, '', this.plugin);
+      void MarkdownRenderer.render(this.app, display, bubble, '', this.renderScope);
       if (m.role === 'assistant' && m === this.messages[this.messages.length - 1]) {
         if (this.mode === 'ielts') this.renderIeltsResultPrompt(bubble, m.content);
         else if (this.mode === 'speaking') this.renderSpeakingCards(bubble, m.content);
@@ -493,7 +503,7 @@ export class MainView extends ItemView {
       const stopBtn = actions.createEl('button', { text: '⏹ 停止播报', cls: 'asc-btn asc-btn-small' });
       stopBtn.addEventListener('click', () => this.stopTts());
     }
-    const isMac = navigator.platform.toUpperCase().includes('MAC');
+    const isMac = Platform.isMacOS;
     const hintEl = actions.createSpan({ text: `${isMac ? '⌘' : 'Ctrl'}↩ 发送`, cls: 'asc-input-hint' });
     const HINT_DEFAULT = hintEl.getText();
     // 口语 + 语音：🎤 按住说话（松开识别并自动发送）
@@ -887,7 +897,6 @@ export class MainView extends ItemView {
         });
       }
       if (!raw.trim()) throw new Error('模型返回内容为空');
-      console.log(`[StudyCoach] 回复完成：${deltas} 个流式增量块，共 ${raw.length} 字${deltas <= 1 ? '（未检测到流式增量：提供商可能不支持流式，已自动降级为整块请求）' : ''}`);
       this.messages.push({ role: 'assistant', content: raw });
       // 结题回复完成：存档并关闭会话（下次切回本科目将新开会话）
       if (this.pendingClose) {
@@ -981,16 +990,16 @@ export class MainView extends ItemView {
     const card = el.createDiv({ cls: 'asc-card asc-grading-card' });
     const secs = Math.round((Date.now() - task.startedAt) / 1000);
     const done = task.batches.filter(b => b.status === 'done').length;
-    card.createEl('div', {
+    card.createDiv( {
       text: `🖼 图片识别：第 ${Math.min(done + 1, task.batches.length)}/${task.batches.length} 段 · 已用时 ${secs} 秒${task.status === 'failed' ? ' · 已中断' : ''}`,
       cls: 'asc-card-title',
     });
     task.batches.forEach((b, i) => {
       const label = `第 ${i + 1} 段（${b.parts.length} 张：${b.parts.map(p => p.name).join('、')}）`;
-      if (b.status === 'done') card.createEl('div', { text: `✓ ${label}：识别完成（${(b.result ?? '').length} 字）`, cls: 'asc-row' });
-      else if (b.status === 'running') card.createEl('div', { text: `⏳ ${label}：识别中…（单段超时上限 120 秒，属正常等待）`, cls: 'asc-row' });
-      else if (b.status === 'failed') card.createEl('div', { text: `❌ ${label}：${b.error ?? '失败'}`, cls: 'asc-row asc-ctx-warn' });
-      else card.createEl('div', { text: `… ${label}：待处理`, cls: 'asc-row asc-muted' });
+      if (b.status === 'done') card.createDiv( { text: `✓ ${label}：识别完成（${(b.result ?? '').length} 字）`, cls: 'asc-row' });
+      else if (b.status === 'running') card.createDiv( { text: `⏳ ${label}：识别中…（单段超时上限 120 秒，属正常等待）`, cls: 'asc-row' });
+      else if (b.status === 'failed') card.createDiv( { text: `❌ ${label}：${b.error ?? '失败'}`, cls: 'asc-row asc-ctx-warn' });
+      else card.createDiv( { text: `… ${label}：待处理`, cls: 'asc-row asc-muted' });
     });
     const btns = card.createDiv({ cls: 'asc-row' });
     if (task.status === 'failed') {
@@ -1095,24 +1104,26 @@ export class MainView extends ItemView {
     const bar = parent.createDiv({ cls: 'asc-logbar' });
     bar.createSpan({ text: `检测到 ${rows.length} 条 log 行：` });
     for (const r of rows) {
-      bar.createEl('div', { text: `【${r.subject}】${r.topic} · ${r.code} · ${r.desc ?? ''}`, cls: 'asc-logrow' });
+      bar.createDiv( { text: `【${r.subject}】${r.topic} · ${r.code} · ${r.desc ?? ''}`, cls: 'asc-logrow' });
     }
     const btns = bar.createDiv();
-    btns.createEl('button', { text: '一键入库', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', async ev => {
-      (ev.target as HTMLElement).setAttr('disabled', 'true');
-      let ok = 0;
-      for (const r of rows) {
-        try {
-          const res = await this.plugin.errorLog.addEntry(r);
-          if (res) ok++;
-        } catch (e) {
-          new Notice(`入库失败：${e instanceof Error ? e.message : String(e)}`, 8000);
-          break;
+    btns.createEl('button', { text: '一键入库', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
+      void (async () => {
+        (ev.target as HTMLElement).setAttr('disabled', 'true');
+        let ok = 0;
+        for (const r of rows) {
+          try {
+            const res = await this.plugin.errorLog.addEntry(r);
+            if (res) ok++;
+          } catch (e) {
+            new Notice(`入库失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+            break;
+          }
         }
-      }
-      new Notice(`已入库 ${ok} 条（复发条目自动 +1 并顺延复查日期）`);
-      void this.plugin.refreshStatusBar();
-      bar.remove();
+        new Notice(`已入库 ${ok} 条（复发条目自动 +1 并顺延复查日期）`);
+        void this.plugin.refreshStatusBar();
+        bar.remove();
+      })();
     });
     btns.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
   }
@@ -1130,24 +1141,26 @@ export class MainView extends ItemView {
     bar.createSpan({
       text: `检测到批改结果：总分 ${fmt(s.overall)}（TR ${fmt(s.tr)} / CC ${fmt(s.cc)} / LR ${fmt(s.lr)} / GRA ${fmt(s.gra)}）· ${parsed.expressions.length} 条高分表达`,
     });
-    bar.createEl('div', {
+    bar.createDiv( {
       text: `来源：${source}${this.attachments.length ? '（最近引用的文档）' : '（未引用文档，作文直接贴在对话里）'}`,
       cls: 'asc-logrow',
     });
     const btns = bar.createDiv();
-    btns.createEl('button', { text: '入库分数与表达', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', async ev => {
-      (ev.target as HTMLElement).setAttr('disabled', 'true');
-      try {
-        await this.plugin.ielts.registerGrade(s, source);
-        const added = parsed.expressions.length
-          ? await this.plugin.expressions.appendAll(parsed.expressions, `教练会话-${todayStr()}`)
-          : 0;
-        new Notice(`已入库：分数进批改记录（趋势可见）${added ? `，${added} 条表达进积累库` : ''}`);
-        bar.remove();
-      } catch (e) {
-        new Notice(`入库失败：${e instanceof Error ? e.message : String(e)}`, 8000);
-        (ev.target as HTMLElement).removeAttribute('disabled');
-      }
+    btns.createEl('button', { text: '入库分数与表达', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
+      void (async () => {
+        (ev.target as HTMLElement).setAttr('disabled', 'true');
+        try {
+          await this.plugin.ielts.registerGrade(s, source);
+          const added = parsed.expressions.length
+            ? await this.plugin.expressions.appendAll(parsed.expressions, `教练会话-${todayStr()}`)
+            : 0;
+          new Notice(`已入库：分数进批改记录（趋势可见）${added ? `，${added} 条表达进积累库` : ''}`);
+          bar.remove();
+        } catch (e) {
+          new Notice(`入库失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+          (ev.target as HTMLElement).removeAttribute('disabled');
+        }
+      })();
     });
     btns.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
   }
@@ -1160,21 +1173,23 @@ export class MainView extends ItemView {
 
     const bar = parent.createDiv({ cls: 'asc-logbar' });
     bar.createSpan({ text: `检测到错题记录：【${w.subject ?? '-'}】${w.topic} · ${w.code ?? '-'} · ${w.status === '未订正' ? '未订正（下次自动跟进）' : '已订正'}` });
-    bar.createEl('div', { text: `我的错误：${w.myError ?? '-'} · 答案基线：${w.answerSource ?? '模型解答（待确认）'}`, cls: 'asc-logrow' });
+    bar.createDiv( { text: `我的错误：${w.myError ?? '-'} · 答案基线：${w.answerSource ?? '模型解答（待确认）'}`, cls: 'asc-logrow' });
     const btns = bar.createDiv();
-    btns.createEl('button', { text: '入错题本', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', async ev => {
-      (ev.target as HTMLElement).setAttr('disabled', 'true');
-      try {
-        const entry = await this.plugin.wrongAnswers.addEntry({
-          subject: w.subject, topic: w.topic, myError: w.myError, code: w.code,
-          answerSource: w.answerSource, status: w.status === '未订正' ? '未订正' : '已订正',
-        });
-        new Notice(entry ? `已入错题本（${entry.id}）${entry.status === '未订正' ? '，下次会话自动跟进' : ''}` : '今日已有同考点记录，未重复登记');
-        bar.remove();
-      } catch (e) {
-        new Notice(`入库失败：${e instanceof Error ? e.message : String(e)}`, 8000);
-        (ev.target as HTMLElement).removeAttribute('disabled');
-      }
+    btns.createEl('button', { text: '入错题本', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
+      void (async () => {
+        (ev.target as HTMLElement).setAttr('disabled', 'true');
+        try {
+          const entry = await this.plugin.wrongAnswers.addEntry({
+            subject: w.subject, topic: w.topic, myError: w.myError, code: w.code,
+            answerSource: w.answerSource, status: w.status === '未订正' ? '未订正' : '已订正',
+          });
+          new Notice(entry ? `已入错题本（${entry.id}）${entry.status === '未订正' ? '，下次会话自动跟进' : ''}` : '今日已有同考点记录，未重复登记');
+          bar.remove();
+        } catch (e) {
+          new Notice(`入库失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+          (ev.target as HTMLElement).removeAttribute('disabled');
+        }
+      })();
     });
     btns.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
   }
@@ -1192,43 +1207,45 @@ export class MainView extends ItemView {
       bar.createSpan({
         text: `检测到终训评分：FC ${fmtBand(s.fc)} / LR ${fmtBand(s.lr)} / GRA ${fmtBand(s.gra)} / P ${fmtBand(s.p)} · 总分 ${SpeakingService.fmtOverall(s)}${s.p === null ? '（不含发音）' : ''}`,
       });
-      if (s.biggestIssue) bar.createEl('div', { text: `最大问题：${s.biggestIssue}`, cls: 'asc-logrow' });
+      if (s.biggestIssue) bar.createDiv( { text: `最大问题：${s.biggestIssue}`, cls: 'asc-logrow' });
     }
     const parts: string[] = [];
     if (exprs.length) parts.push(`${exprs.length} 条高分表达`);
     if (wrongs.length) parts.push(`${wrongs.length} 条错题（SP/GR/VX）`);
-    if (parts.length) bar.createEl('div', { text: parts.join(' · '), cls: 'asc-logrow' });
+    if (parts.length) bar.createDiv( { text: parts.join(' · '), cls: 'asc-logrow' });
 
     const row = bar.createDiv({ cls: 'asc-row' });
     // 模式选择：台账按模考/陪练/讨论区分趋势
     const modeSel = row.createEl('select', { cls: 'asc-select' });
     for (const m of ['模考', '陪练', '讨论']) modeSel.createEl('option', { text: m, value: m });
-    row.createEl('button', { text: '入库（分数+表达+错题）', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', async ev => {
-      (ev.target as HTMLElement).setAttr('disabled', 'true');
-      try {
-        const msgs: string[] = [];
-        if (finals.length) {
-          await this.plugin.speaking.registerScore(finals[finals.length - 1], modeSel.value);
-          msgs.push('分数进口语记录（趋势可见）');
-        }
-        if (exprs.length) {
-          const added = await this.plugin.expressions.appendAll(exprs, `口语训练-${todayStr()}`);
-          if (added) msgs.push(`${added} 条表达进积累库`);
-        }
-        if (wrongs.length) {
-          let added = 0;
-          for (const w of wrongs) {
-            const e = await this.plugin.wrongAnswers.addEntry({ subject: '雅思口语', topic: w.topic, myError: w.myError, code: w.code, answerSource: '口语训练', status: '未订正' });
-            if (e) added++;
+    row.createEl('button', { text: '入库（分数+表达+错题）', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
+      void (async () => {
+        (ev.target as HTMLElement).setAttr('disabled', 'true');
+        try {
+          const msgs: string[] = [];
+          if (finals.length) {
+            await this.plugin.speaking.registerScore(finals[finals.length - 1], modeSel.value);
+            msgs.push('分数进口语记录（趋势可见）');
           }
-          if (added) msgs.push(`${added} 条错题进错题本（下次自动跟进）`);
+          if (exprs.length) {
+            const added = await this.plugin.expressions.appendAll(exprs, `口语训练-${todayStr()}`);
+            if (added) msgs.push(`${added} 条表达进积累库`);
+          }
+          if (wrongs.length) {
+            let added = 0;
+            for (const w of wrongs) {
+              const e = await this.plugin.wrongAnswers.addEntry({ subject: '雅思口语', topic: w.topic, myError: w.myError, code: w.code, answerSource: '口语训练', status: '未订正' });
+              if (e) added++;
+            }
+            if (added) msgs.push(`${added} 条错题进错题本（下次自动跟进）`);
+          }
+          new Notice(msgs.length ? `已入库：${msgs.join('，')}` : '今日已有同考点记录，未重复登记');
+          bar.remove();
+        } catch (e) {
+          new Notice(`入库失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+          (ev.target as HTMLElement).removeAttribute('disabled');
         }
-        new Notice(msgs.length ? `已入库：${msgs.join('，')}` : '今日已有同考点记录，未重复登记');
-        bar.remove();
-      } catch (e) {
-        new Notice(`入库失败：${e instanceof Error ? e.message : String(e)}`, 8000);
-        (ev.target as HTMLElement).removeAttribute('disabled');
-      }
+      })();
     });
     row.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
   }
@@ -1410,7 +1427,7 @@ export class MainView extends ItemView {
     const entries = await this.plugin.errorLog.load();
     const ROW_CAP = 50;
 
-    el.createEl('div', {
+    el.createDiv( {
       text: '记录中心：A-Level 与雅思记录统一展示（数据文件保持独立，零信息丢失）；全部明细见底部 .md 源文件。',
       cls: 'asc-muted',
     });
@@ -1607,20 +1624,26 @@ export class MainView extends ItemView {
           head2.createSpan({ text: c.status + (c.unlocked ? `（${c.unlocked}）` : ''), cls: 'asc-muted' });
           const btns = row.createDiv({ cls: 'asc-row' });
           if (c.status === '锁定') {
-            btns.createEl('button', { text: '解锁进入学习', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', async () => {
-              await this.plugin.chapters.updateStatus(c.subject, c.chapter, '解锁');
-              this.render();
+            btns.createEl('button', { text: '解锁进入学习', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => {
+              void (async () => {
+                await this.plugin.chapters.updateStatus(c.subject, c.chapter, '解锁');
+                this.render();
+              })();
             });
           } else {
             if (c.status === '解锁') {
-              btns.createEl('button', { text: '标记已掌握', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
-                await this.plugin.chapters.updateStatus(c.subject, c.chapter, '已掌握');
-                this.render();
+              btns.createEl('button', { text: '标记已掌握', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+                void (async () => {
+                  await this.plugin.chapters.updateStatus(c.subject, c.chapter, '已掌握');
+                  this.render();
+                })();
               });
             }
-            btns.createEl('button', { text: '锁定', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
-              await this.plugin.chapters.updateStatus(c.subject, c.chapter, '锁定');
-              this.render();
+            btns.createEl('button', { text: '锁定', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+              void (async () => {
+                await this.plugin.chapters.updateStatus(c.subject, c.chapter, '锁定');
+                this.render();
+              })();
             });
           }
           btns.createEl('button', { text: '打开内容', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(c.file));
@@ -1687,23 +1710,27 @@ export class MainView extends ItemView {
       }
       for (const e of due) {
         const item = b1.createDiv({ cls: 'asc-queue-item' });
-        item.createEl('div', { text: `#${e.id} 【${e.subject}】${e.topic} · ${e.code} · 复发 ${e.recurrence}`, cls: 'asc-card-title' });
-        item.createEl('div', { text: e.desc, cls: 'asc-row' });
-        if (e.fix) item.createEl('div', { text: `正确做法：${e.fix}`, cls: 'asc-row asc-muted' });
+        item.createDiv( { text: `#${e.id} 【${e.subject}】${e.topic} · ${e.code} · 复发 ${e.recurrence}`, cls: 'asc-card-title' });
+        item.createDiv( { text: e.desc, cls: 'asc-row' });
+        if (e.fix) item.createDiv( { text: `正确做法：${e.fix}`, cls: 'asc-row asc-muted' });
         const btns = item.createDiv({ cls: 'asc-row' });
-        btns.createEl('button', { text: '出变式题', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => this.startVariantDrill(e));
-        btns.createEl('button', { text: '复查通过', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
-          const next = e.status === '未消除' ? '观察中' : '已消除';
-          await this.plugin.errorLog.updateEntry(e.id, { status: next, reviewDate: addDays(todayStr(), 7) });
-          new Notice(next === '已消除' ? `#${e.id} 已连续两次通过，标记为已消除` : `#${e.id} 通过一次，状态改为观察中`);
-          void this.plugin.refreshStatusBar();
-          this.render();
+        btns.createEl('button', { text: '出变式题', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.startVariantDrill(e));
+        btns.createEl('button', { text: '复查通过', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+          void (async () => {
+            const next = e.status === '未消除' ? '观察中' : '已消除';
+            await this.plugin.errorLog.updateEntry(e.id, { status: next, reviewDate: addDays(todayStr(), 7) });
+            new Notice(next === '已消除' ? `#${e.id} 已连续两次通过，标记为已消除` : `#${e.id} 通过一次，状态改为观察中`);
+            void this.plugin.refreshStatusBar();
+            this.render();
+          })();
         });
-        btns.createEl('button', { text: '再犯', cls: 'asc-btn asc-btn-small' }).addEventListener('click', async () => {
-          await this.plugin.errorLog.addEntry({ subject: e.subject, topic: e.topic, code: e.code });
-          new Notice(`#${e.id} 复发 +1，复查日期顺延 3 天`);
-          void this.plugin.refreshStatusBar();
-          this.render();
+        btns.createEl('button', { text: '再犯', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+          void (async () => {
+            await this.plugin.errorLog.addEntry({ subject: e.subject, topic: e.topic, code: e.code });
+            new Notice(`#${e.id} 复发 +1，复查日期顺延 3 天`);
+            void this.plugin.refreshStatusBar();
+            this.render();
+          })();
         });
       }
     }
@@ -1749,15 +1776,17 @@ export class MainView extends ItemView {
       }
       for (const w of openWas) {
         const item = b4.createDiv({ cls: 'asc-queue-item' });
-        item.createEl('div', { text: `${w.id}【${w.subject}】${w.topic}`, cls: 'asc-card-title' });
-        item.createEl('div', { text: `我的错误：${w.myError || '-'} · 答案基线：${w.answerSource}`, cls: 'asc-row asc-muted' });
+        item.createDiv( { text: `${w.id}【${w.subject}】${w.topic}`, cls: 'asc-card-title' });
+        item.createDiv( { text: `我的错误：${w.myError || '-'} · 答案基线：${w.answerSource}`, cls: 'asc-row asc-muted' });
         const btns = item.createDiv({ cls: 'asc-row' });
         const okBtn = btns.createEl('button', { text: '已重做掌握', cls: 'asc-btn asc-btn-small' });
         okBtn.setAttr('title', '线下/课上已重做并掌握，手工标记为已订正');
-        okBtn.addEventListener('click', async () => {
-          const done = await this.plugin.wrongAnswers.updateStatus(w.id, '已订正');
-          new Notice(done ? `${w.id} 已标记为已订正` : '更新失败：条目可能已变更');
-          this.render();
+        okBtn.addEventListener('click', () => {
+          void (async () => {
+            const done = await this.plugin.wrongAnswers.updateStatus(w.id, '已订正');
+            new Notice(done ? `${w.id} 已标记为已订正` : '更新失败：条目可能已变更');
+            this.render();
+          })();
         });
       }
     }
@@ -1766,12 +1795,12 @@ export class MainView extends ItemView {
   /** 线下反馈确认卡片：解析结果逐条列出，确认后应用到三队记录 */
   private renderFeedbackCard(el: HTMLElement, fb: ReviewFeedback): void {
     const card = el.createDiv({ cls: 'asc-card' });
-    card.createEl('div', { text: '线下练习反馈（确认后应用）', cls: 'asc-card-title' });
+    card.createDiv( { text: '线下练习反馈（确认后应用）', cls: 'asc-card-title' });
     const mark = (p: boolean) => (p ? '✓' : '✗');
-    for (const t of fb.terms) card.createEl('div', { text: `${mark(t.pass)} 术语：${t.name}`, cls: 'asc-row' });
-    for (const x of fb.expressions) card.createEl('div', { text: `${mark(x.pass)} 表达：${x.name}`, cls: 'asc-row' });
-    for (const p of fb.points) card.createEl('div', { text: `${mark(p.pass)} 失分点：${p.topic}`, cls: 'asc-row' });
-    for (const w of fb.wrongs) card.createEl('div', { text: `${mark(w.pass)} 错题：${w.topic}`, cls: 'asc-row' });
+    for (const t of fb.terms) card.createDiv( { text: `${mark(t.pass)} 术语：${t.name}`, cls: 'asc-row' });
+    for (const x of fb.expressions) card.createDiv( { text: `${mark(x.pass)} 表达：${x.name}`, cls: 'asc-row' });
+    for (const p of fb.points) card.createDiv( { text: `${mark(p.pass)} 失分点：${p.topic}`, cls: 'asc-row' });
+    for (const w of fb.wrongs) card.createDiv( { text: `${mark(w.pass)} 错题：${w.topic}`, cls: 'asc-row' });
     const btns = card.createDiv({ cls: 'asc-row' });
     btns.createEl('button', { text: '确认应用', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.applyReviewFeedback(fb));
     btns.createEl('button', { text: '丢弃', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
@@ -1826,22 +1855,24 @@ export class MainView extends ItemView {
     const bar = parent.createDiv({ cls: 'asc-logbar' });
     bar.createSpan({ text: `检测到概念地图：【${cm.subject ?? '-'}】${cm.chapter ?? '-'} · ${cm.concepts.length} 个概念` });
     for (const c of cm.concepts) {
-      bar.createEl('div', { text: `${c.status === '已学' ? '✓' : '◌'} ${c.name}（${c.status}）`, cls: 'asc-logrow' });
+      bar.createDiv( { text: `${c.status === '已学' ? '✓' : '◌'} ${c.name}（${c.status}）`, cls: 'asc-logrow' });
     }
     const btns = bar.createDiv();
-    btns.createEl('button', { text: '登记到概念地图', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', async ev => {
-      (ev.target as HTMLElement).setAttr('disabled', 'true');
-      try {
-        for (const c of cm.concepts) {
-          await this.plugin.conceptMap.upsert({ chapter: cm.chapter ?? '未分章', concept: c.name, status: c.status, subject: cm.subject });
+    btns.createEl('button', { text: '登记到概念地图', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
+      void (async () => {
+        (ev.target as HTMLElement).setAttr('disabled', 'true');
+        try {
+          for (const c of cm.concepts) {
+            await this.plugin.conceptMap.upsert({ chapter: cm.chapter ?? '未分章', concept: c.name, status: c.status, subject: cm.subject });
+          }
+          const pending = cm.concepts.filter(c => c.status !== '已学').length;
+          new Notice(`已登记 ${cm.concepts.length} 个概念${pending ? `，其中 ${pending} 个预习/待详学（以后学到时提示词会提醒）` : ''}`);
+          bar.remove();
+        } catch (e) {
+          new Notice(`登记失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+          (ev.target as HTMLElement).removeAttribute('disabled');
         }
-        const pending = cm.concepts.filter(c => c.status !== '已学').length;
-        new Notice(`已登记 ${cm.concepts.length} 个概念${pending ? `，其中 ${pending} 个预习/待详学（以后学到时提示词会提醒）` : ''}`);
-        bar.remove();
-      } catch (e) {
-        new Notice(`登记失败：${e instanceof Error ? e.message : String(e)}`, 8000);
-        (ev.target as HTMLElement).removeAttribute('disabled');
-      }
+      })();
     });
     btns.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
   }
