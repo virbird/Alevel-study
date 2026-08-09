@@ -4,3 +4,4 @@ main.js
 test/run.js
 test/smoke.js
 *.map
+.tmp_gen/
