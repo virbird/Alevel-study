@@ -65,6 +65,8 @@ export class MainView extends ItemView {
   private ttsPlaying = false;
   private ttsStopped = false;
   private ttsSource: AudioBufferSourceNode | null = null;
+  /** 共享 AudioContext：iOS/iPadOS 要求在用户手势内创建并 resume，否则 suspended 无声 */
+  private audioCtx: AudioContext | null = null;
   /** 口语训练：按住说话录音状态 */
   private recording = false;
   private recorder: AudioRecorder | null = null;
@@ -111,6 +113,10 @@ export class MainView extends ItemView {
 
   async onClose(): Promise<void> {
     this.renderScope.dispose();
+    if (this.audioCtx) {
+      void this.audioCtx.close().catch(() => undefined);
+      this.audioCtx = null;
+    }
     // 防止漏数据：关闭视图时把未存档的消息自动落盘（含其他科目槽里的未结束会话）
     await this.archiveIfNeeded(false);
     for (const [mode, slot] of Object.entries(this.slots)) {
@@ -514,6 +520,7 @@ export class MainView extends ItemView {
       micBtn.disabled = !ready || this.busy;
       micBtn.addEventListener('pointerdown', e => {
         e.preventDefault();
+        this.unlockAudio(); // iOS：手势内解锁 AudioContext，保证考官回复可播报
         if (this.recording || this.busy || !ready) return;
         void (async () => {
           try {
@@ -577,6 +584,7 @@ export class MainView extends ItemView {
     const sendBtn = actions.createEl('button', { text: this.busy ? '回复中…' : '发送', cls: 'asc-btn asc-btn-cta' });
     sendBtn.disabled = this.busy || !this.systemPrompt || this.timerDeadline > Date.now();
     const doSend = () => {
+      this.unlockAudio(); // iOS：手势内解锁 AudioContext，保证考官回复可播报
       const text = input.value.trim();
       if (!text || this.busy || !this.systemPrompt) return;
       if (this.timerDeadline > Date.now()) {
@@ -1254,22 +1262,29 @@ export class MainView extends ItemView {
   private async playReplyTts(raw: string): Promise<void> {
     const sents = splitForTts(stripMachineBlocks(raw));
     if (!sents.length) return;
-    let ctx: AudioContext | null = null;
+    const ctx = this.ensureAudioCtx();
+    if (!ctx) {
+      void this.voiceLog('ERROR', 'TTS 播报', '当前环境不支持 Web Audio');
+      return;
+    }
     try {
       const vcfg = await this.plugin.loadVoiceConfig();
       const token = await this.plugin.getNlsToken();
       const cfg = { token, appKey: vcfg.aliyunAppKey, voice: vcfg.ttsVoice };
-      ctx = new AudioContext();
       this.ttsPlaying = true;
       this.ttsStopped = false;
       this.render();
+      if (ctx.state === 'suspended') {
+        // iPad：未在手势内解锁时 resume 可能被拒；记日志便于排障
+        await ctx.resume().catch(() => undefined);
+        if (ctx.state !== 'running') void this.voiceLog('WARN', 'TTS 播报', `AudioContext state=${ctx.state}（iOS 未解锁：需先点一次🎤或发送）`);
+      }
       for (const s of sents) {
         if (this.ttsStopped) break;
         const audio = await aliyunTts(s, cfg);
         if (this.ttsStopped) break;
         const buf = await ctx.decodeAudioData(audio);
         await new Promise<void>(resolve => {
-          if (!ctx) { resolve(); return; }
           const src = ctx.createBufferSource();
           this.ttsSource = src;
           src.buffer = buf;
@@ -1284,11 +1299,28 @@ export class MainView extends ItemView {
       void this.voiceLog('ERROR', 'TTS 播报', msg);
       new Notice(`播报失败：${msg}（详见 雅思/口语/语音日志.md）`, 6000);
     } finally {
-      if (ctx) void ctx.close();
       this.ttsSource = null;
       this.ttsPlaying = false;
       this.render();
     }
+  }
+
+  /** 创建/返回共享 AudioContext（不 close，复用已解锁实例） */
+  private ensureAudioCtx(): AudioContext | null {
+    if (!this.audioCtx) {
+      try {
+        this.audioCtx = new AudioContext();
+      } catch {
+        return null;
+      }
+    }
+    return this.audioCtx;
+  }
+
+  /** 用户手势内调用：解锁 iOS/iPadOS 的 AudioContext（suspended → running） */
+  private unlockAudio(): void {
+    const ctx = this.ensureAudioCtx();
+    if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => undefined);
   }
 
   /** 打断当前播报（已合成的未播句全部放弃） */
