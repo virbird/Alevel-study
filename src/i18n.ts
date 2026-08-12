@@ -521,7 +521,7 @@ const en: Dict = {
   'conceptmap.registered': 'Registered {n} concepts{pending}',
   'conceptmap.pending': '，{n} preview/to-learn（the prompt reminds when studied later）',
   'conceptmap.fail': 'Failed to register: {msg}',
-  'variant.prefill': 'Review task: for 「{topic}」(code {code}, made: {desc}) give a new variant problem with the same topic and same trap, different from the original.',
+  'variant.prefill': 'Review task: for 「{topic}」(code {code}, made: {desc}) give a new variant problem with the same topic and same trap, different from the original. It has recurred {n} time(s) — if a variant was practiced recently, take a different angle.',
   'archive.done': 'Archived: {path}',
   'main.llmRequired': 'Please configure the LLM in Settings first.',
   'settings.model.default': 'default',
@@ -551,7 +551,7 @@ const en: Dict = {
   'records.cols.errorlog': 'ID|Date|Subject|Level|Topic (EN)|Code|Description|Recurrence|Status|Review date',
   'records.cols.grades': 'Date|Source|Overall|TR|CC|LR|GRA',
   'records.cols.exprs': 'Expression|Type|Source|Added|Status',
-  'records.cols.wrongs': 'ID|Date|Subject|Topic (EN)|My error|Error code|Answer source|Status',
+  'records.cols.wrongs': 'ID|Date|Subject|Topic (EN)|My error|Error code|Answer source|Status|Session',
   'records.cols.questions': 'Date|Subject|Topic (EN)|Confusion|Depth',
   'records.cols.conceptmap': 'Chapter|Concept|Subject|Status|Updated',
   'records.cols.speaking': 'Date|Mode|FC|LR|GRA|P|Overall|Main issue',
@@ -636,6 +636,17 @@ const en: Dict = {
   'profile.ielts': '- IELTS target: {target} (main focus {focus})',
   'profile.oxbridge': '- Oxbridge direction: {direction} (expand only when the student shows interest on his own)',
   'profile.independent': '- Independent-thinking threshold: {n} minutes',
+  'wrong.sessionLink': 'session',
+  'wrong.sessionMissing': 'Session not archived yet (zero-interaction sessions are not saved)',
+  'wrong.prefill': 'Redo the wrong problem: "{topic}" (my mistake back then: {err}){sess}',
+  'wrong.prefill.sess': '\nOriginal session: 会话/{session}.md',
+  'drill.prefill': 'Spot-check the term "{term}" — start from definition components, then one usage question.',
+  'progress.term.one': '1 spot-check away from stable',
+  'progress.term.two': '2 spot-checks away from stable',
+  'progress.log.one': '1 review away from resolved',
+  'progress.log.two': '2 reviews away from resolved',
+  'progress.wrong.redo': '1 redo away from corrected',
+  'records.action.practice': 'Practice',
 };
 
 const zh: Dict = {
@@ -1150,7 +1161,7 @@ const zh: Dict = {
   'conceptmap.registered': '已登记 {n} 个概念{pending}',
   'conceptmap.pending': '，其中 {n} 个预习/待详学（以后学到时提示词会提醒）',
   'conceptmap.fail': '登记失败：{msg}',
-  'variant.prefill': '复查任务：针对「{topic}」（代码 {code}，曾犯：{desc}）出一道同考点、同陷阱的新变式题，不要和原题相同。',
+  'variant.prefill': '复查任务：针对「{topic}」（代码 {code}，曾犯：{desc}）出一道同考点、同陷阱的新变式题，不要和原题相同。该考点已复发 {n} 次，若近期练过变式请换一个角度出题。',
   'archive.done': '已存档：{path}',
   'main.llmRequired': '请先在设置里配置 LLM',
   'settings.model.default': '默认',
@@ -1180,7 +1191,7 @@ const zh: Dict = {
   'records.cols.errorlog': 'ID|日期|科目|层级|考点(EN)|代码|描述|复发|状态|复查日期',
   'records.cols.grades': '日期|来源|总分|TR|CC|LR|GRA',
   'records.cols.exprs': '表达|类型|来源|入库日期|状态',
-  'records.cols.wrongs': 'ID|日期|科目|考点(EN)|我的错误|错因码|答案来源|状态',
+  'records.cols.wrongs': 'ID|日期|科目|考点(EN)|我的错误|错因码|答案来源|状态|会话',
   'records.cols.questions': '日期|科目|考点(EN)|困惑类型|求助深度',
   'records.cols.conceptmap': '章节|概念|科目|状态|更新日期',
   'records.cols.speaking': '日期|模式|FC|LR|GRA|P|总分|最大问题',
@@ -1265,6 +1276,17 @@ const zh: Dict = {
   'profile.ielts': '- 雅思目标：{target}（主攻 {focus}）',
   'profile.oxbridge': '- 牛剑方向：{direction}（仅在学生主动表示兴趣时展开）',
   'profile.independent': '- 独立思考门槛：{n} 分钟',
+  'wrong.sessionLink': '原会话',
+  'wrong.sessionMissing': '会话尚未存档（零交互会话不存档）',
+  'wrong.prefill': '重做错题：「{topic}」（我当时的错误：{err}）{sess}',
+  'wrong.prefill.sess': '\n原会话见 会话/{session}.md',
+  'drill.prefill': '抽查术语「{term}」——先问定义成分，再问一道用法题。',
+  'progress.term.one': '1 次抽查即稳定',
+  'progress.term.two': '还需 2 次抽查',
+  'progress.log.one': '1 次复查即消除',
+  'progress.log.two': '还需 2 次复查',
+  'progress.wrong.redo': '重做一次即订正',
+  'records.action.practice': '去练',
 };
 
 let current: Lang = 'en';
@@ -1353,4 +1375,18 @@ export function subjectLabel(key: string): string {
   const pair = SUBJECT_LABELS[key];
   if (!pair) return key;
   return current === 'zh' ? pair[1] : pair[0];
+}
+
+/** 掌握度进度徽章：台账类型 + 状态值 → 「距下一状态」显示文案；空串=不显示 */
+export function progressBadge(kind: 'term' | 'log' | 'wrong', status: string): string {
+  if (kind === 'term') {
+    if (status === '观察中') return t('progress.term.one');
+    if (status === '未稳定') return t('progress.term.two');
+  }
+  if (kind === 'log') {
+    if (status === '观察中') return t('progress.log.one');
+    if (status === '未消除') return t('progress.log.two');
+  }
+  if (kind === 'wrong' && status === '未订正') return t('progress.wrong.redo');
+  return '';
 }

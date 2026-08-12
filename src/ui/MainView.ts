@@ -1,8 +1,9 @@
 import { ItemView, MarkdownRenderer, Notice, Platform, TFile, WorkspaceLeaf } from 'obsidian';
 import type ALevelStudyCoachPlugin from '../main';
-import { t, statusLabel, modeLabel, kindLabel, subjectLabel } from '../i18n';
+import { t, statusLabel, modeLabel, kindLabel, subjectLabel, progressBadge } from '../i18n';
 import { SUBJECTS } from '../types';
 import type { ChatMessage, ErrorLogEntry, ModeKey, SessionTag } from '../types';
+import type { WrongAnswerEntry } from '../services/WrongAnswerService';
 import { extractJson } from '../llm/LlmClient';
 import { todayStr, addDays } from '../utils/date';
 import { parseFrontmatter } from '../utils/markdown';
@@ -1205,6 +1206,7 @@ export class MainView extends ItemView {
           const entry = await this.plugin.wrongAnswers.addEntry({
             subject: w.subject, topic: w.topic, myError: w.myError, code: w.code,
             answerSource: w.answerSource, status: w.status === '未订正' ? '未订正' : '已订正',
+            session: `${this.sessionId}-${String(this.mode)}`,
           });
           new Notice(entry ? t('wrong.added', { id: entry.id, status: entry.status === '未订正' ? t('wrong.added.open') : '' }) : t('wrong.dup'));
           bar.remove();
@@ -1257,7 +1259,7 @@ export class MainView extends ItemView {
           if (wrongs.length) {
             let added = 0;
             for (const w of wrongs) {
-              const e = await this.plugin.wrongAnswers.addEntry({ subject: '雅思口语', topic: w.topic, myError: w.myError, code: w.code, answerSource: t('coach.speakingSrc'), status: '未订正' });
+              const e = await this.plugin.wrongAnswers.addEntry({ subject: '雅思口语', topic: w.topic, myError: w.myError, code: w.code, answerSource: t('coach.speakingSrc'), status: '未订正', session: `${this.sessionId}-${String(this.mode)}` });
               if (e) added++;
             }
             if (added) msgs.push(t('speaking.registered.wrongs', { n: added }));
@@ -1513,7 +1515,8 @@ export class MainView extends ItemView {
         for (const h of t('records.cols.errorlog').split('|')) head.createEl('th', { text: h });
         for (const e of filtered.slice(0, ROW_CAP)) {
           const tr = table.createEl('tr');
-          for (const cell of [e.id, e.date, e.subject, e.level, e.topic, e.code, e.desc, String(e.recurrence), statusLabel(e.status), e.reviewDate]) tr.createEl('td', { text: cell });
+          const badge = progressBadge('log', e.status);
+          for (const cell of [e.id, e.date, e.subject, e.level, e.topic, e.code, e.desc, String(e.recurrence), statusLabel(e.status) + (badge ? ` · ${badge}` : ''), e.reviewDate]) tr.createEl('td', { text: cell });
         }
         if (filtered.length > ROW_CAP) tableWrap.createDiv({ text: t('records.onlyRecent', { n: ROW_CAP, total: filtered.length }), cls: 'asc-muted' });
       };
@@ -1577,7 +1580,15 @@ export class MainView extends ItemView {
         for (const h of t('records.cols.wrongs').split('|')) whead.createEl('th', { text: h });
         for (const w of [...was].reverse().slice(0, ROW_CAP)) {
           const tr = wt.createEl('tr');
-          for (const cell of [w.id, w.date, w.subject, w.topic, w.myError, w.code, w.answerSource, statusLabel(w.status)]) tr.createEl('td', { text: cell });
+          const wbadge = progressBadge('wrong', w.status);
+          for (const cell of [w.id, w.date, w.subject, w.topic, w.myError, w.code, w.answerSource, statusLabel(w.status) + (wbadge ? ` · ${wbadge}` : '')]) tr.createEl('td', { text: cell });
+          const sessTd = tr.createEl('td');
+          if (w.session) {
+            const a = sessTd.createEl('a', { text: t('wrong.sessionLink'), cls: 'asc-link' });
+            a.addEventListener('click', open(`${ROOT}/会话/${w.session}.md`));
+          } else {
+            sessTd.setText('-');
+          }
         }
       }
     }
@@ -1762,6 +1773,8 @@ export class MainView extends ItemView {
       for (const e of due) {
         const item = b1.createDiv({ cls: 'asc-queue-item' });
         item.createDiv( { text: t('review.points.item', { id: e.id, subject: e.subject, topic: e.topic, code: e.code, n: e.recurrence }), cls: 'asc-card-title' });
+        const pbadge = progressBadge('log', e.status);
+        if (pbadge) item.createDiv( { text: pbadge, cls: 'asc-row asc-muted' });
         item.createDiv( { text: e.desc, cls: 'asc-row' });
         if (e.fix) item.createDiv( { text: `${t('review.fix')}：${e.fix}`, cls: 'asc-row asc-muted' });
         const btns = item.createDiv({ cls: 'asc-row' });
@@ -1797,7 +1810,10 @@ export class MainView extends ItemView {
         b2.createDiv({ text: t('review.terms.empty'), cls: 'asc-empty' });
       } else {
         for (const tm of drillTerms) {
-          b2.createDiv({ text: t('review.terms.item', { term: tm.term, subject: tm.subject, status: tm.status }), cls: 'asc-row asc-muted' });
+          const row = b2.createDiv({ cls: 'asc-queue-item' });
+          const tbadge = progressBadge('term', tm.status);
+          row.createDiv({ text: `${t('review.terms.item', { term: tm.term, subject: tm.subject, status: statusLabel(tm.status) })}${tbadge ? ` · ${tbadge}` : ''}`, cls: 'asc-row asc-muted' });
+          row.createEl('button', { text: t('records.action.practice'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.startTermDrill(tm.term));
         }
         b2.createDiv({ text: t('review.terms.hint'), cls: 'asc-empty' });
       }
@@ -1828,8 +1844,12 @@ export class MainView extends ItemView {
       for (const w of openWas) {
         const item = b4.createDiv({ cls: 'asc-queue-item' });
         item.createDiv( { text: `${w.id}【${w.subject}】${w.topic}`, cls: 'asc-card-title' });
-        item.createDiv( { text: `${t('wrong.myError', { e: w.myError || '-', a: w.answerSource })}`, cls: 'asc-row asc-muted' });
+        item.createDiv( { text: `${t('wrong.myError', { e: w.myError || '-', a: w.answerSource })} · ${progressBadge('wrong', w.status)}`, cls: 'asc-row asc-muted' });
         const btns = item.createDiv({ cls: 'asc-row' });
+        btns.createEl('button', { text: t('records.action.practice'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.startWrongRedo(w));
+        if (w.session) {
+          btns.createEl('button', { text: t('wrong.sessionLink'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => this.openFile(`${ROOT}/会话/${w.session}.md`));
+        }
         const okBtn = btns.createEl('button', { text: t('review.wrongs.done'), cls: 'asc-btn asc-btn-small' });
         okBtn.setAttr('title', t('review.wrongs.done.title'));
         okBtn.addEventListener('click', () => {
@@ -1937,7 +1957,35 @@ export class MainView extends ItemView {
     this.render();
     const input = this.bodyEl.querySelector<HTMLTextAreaElement>('.asc-input-bar textarea');
     if (input) {
-      input.value = t('variant.prefill', { topic: e.topic, code: e.code, desc: e.desc });
+      input.value = t('variant.prefill', { topic: e.topic, code: e.code, desc: e.desc, n: e.recurrence });
+      input.focus();
+    }
+  }
+
+  /** 术语抽查：跳到教练页签 drill 模式并预填抽查请求 */
+  private async startTermDrill(term: string): Promise<void> {
+    this.saveCurrentSlot();
+    this.mode = 'drill';
+    this.tab = 'coach';
+    await this.startSession(false);
+    this.render();
+    const input = this.bodyEl.querySelector<HTMLTextAreaElement>('.asc-input-bar textarea');
+    if (input) {
+      input.value = t('drill.prefill', { term });
+      input.focus();
+    }
+  }
+
+  /** 错题重做：跳到对应科目并预填重做请求（带会话回链） */
+  private async startWrongRedo(w: WrongAnswerEntry): Promise<void> {
+    this.saveCurrentSlot();
+    this.mode = SUBJECT_TO_MODE[w.subject] ?? 'Maths';
+    this.tab = 'coach';
+    await this.startSession(false);
+    this.render();
+    const input = this.bodyEl.querySelector<HTMLTextAreaElement>('.asc-input-bar textarea');
+    if (input) {
+      input.value = t('wrong.prefill', { topic: w.topic, err: w.myError || '-', sess: w.session ? t('wrong.prefill.sess', { session: w.session }) : '' });
       input.focus();
     }
   }

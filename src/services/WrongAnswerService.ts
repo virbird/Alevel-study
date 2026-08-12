@@ -15,6 +15,7 @@ export interface WrongAnswerEntry {
   code: string;         // 错因代码（DV/CL/LK 或科目码）
   answerSource: string; // 官方答案 / 模型解答（已确认）/ 模型解答（待确认）
   status: WrongAnswerStatus;
+  session: string;      // 会话回链：<sessionId>-<mode>（可空；旧 8 列行为 ''）
 }
 
 /**
@@ -41,6 +42,7 @@ export class WrongAnswerService {
         code: r[5],
         answerSource: r[6],
         status: r[7] === '未订正' ? '未订正' : '已订正',
+        session: r[8] ?? '',
       }));
   }
 
@@ -61,8 +63,9 @@ export class WrongAnswerService {
       code: p.code ?? '',
       answerSource: p.answerSource ?? '模型解答（待确认）',
       status: p.status === '未订正' ? '未订正' : '已订正',
+      session: p.session ?? '',
     };
-    const row = renderRow([entry.id, entry.date, entry.subject, entry.topic, entry.myError, entry.code, entry.answerSource, entry.status]);
+    const row = renderRow([entry.id, entry.date, entry.subject, entry.topic, entry.myError, entry.code, entry.answerSource, entry.status, entry.session]);
     await this.vault.appendTableRow(WRONG_ANSWER_PATH, row);
     return entry;
   }
@@ -78,8 +81,11 @@ export class WrongAnswerService {
     if (!e || e.status === status) return false;
     const content = await this.vault.read(WRONG_ANSWER_PATH);
     if (!content) return false;
-    const oldRow = renderRow([e.id, e.date, e.subject, e.topic, e.myError, e.code, e.answerSource, e.status]);
-    const newRow = renderRow([e.id, e.date, e.subject, e.topic, e.myError, e.code, e.answerSource, status]);
+    const oldRow9 = renderRow([e.id, e.date, e.subject, e.topic, e.myError, e.code, e.answerSource, e.status, e.session]);
+    const oldRow8 = renderRow([e.id, e.date, e.subject, e.topic, e.myError, e.code, e.answerSource, e.status]);
+    const newRow = renderRow([e.id, e.date, e.subject, e.topic, e.myError, e.code, e.answerSource, status, e.session]);
+    // 旧 8 列行兼容：优先匹配 9 列，回退 8 列（重写时顺带迁移为 9 列）
+    const oldRow = content.includes(oldRow9) ? oldRow9 : oldRow8;
     if (!content.includes(oldRow)) return false;
     await this.vault.write(WRONG_ANSWER_PATH, content.replace(oldRow, newRow));
     return true;
