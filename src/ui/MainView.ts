@@ -8,6 +8,7 @@ import { extractJson } from '../llm/LlmClient';
 import { todayStr, addDays } from '../utils/date';
 import { parseFrontmatter } from '../utils/markdown';
 import { ROOT } from '../services/VaultService';
+import { ReviewSheetService } from '../services/ReviewSheetService';
 import { OnboardModal } from './OnboardModal';
 import { CaptureModal } from './CaptureModal';
 import { PromptModal } from './PromptModal';
@@ -760,11 +761,20 @@ export class MainView extends ItemView {
     // 未订正错题跟进（错题本台账）：让教练遇到相关题目时顺势让学生重做
     const openWas = await this.plugin.wrongAnswers.open();
     if (openWas.length) {
-      const lines = openWas.map(w => t('inject.wrongs.line', { subject: w.subject, topic: w.topic, err: w.myError || t('inject.wrongs.noDesc'), code: w.code || '-' }));
-      extras.push(
-        `════════ ${t('inject.wrongs.title')} ════════\n` + lines.join('\n') +
-        `\n${t('inject.wrongs.usage')}`,
-      );
+      if (openWas.length > 5 && (await this.plugin.profileL2.isFresh())) {
+        // 条目多且画像新鲜：注入概览替代逐条（省 token）
+        extras.push(
+          `════════ ${t('inject.wrongs.summaryTitle')} ════════\n` +
+          t('inject.wrongs.summary', { n: openWas.length }) +
+          `\n${t('inject.wrongs.usage')}`,
+        );
+      } else {
+        const lines = openWas.map(w => t('inject.wrongs.line', { subject: w.subject, topic: w.topic, err: w.myError || t('inject.wrongs.noDesc'), code: w.code || '-' }));
+        extras.push(
+          `════════ ${t('inject.wrongs.title')} ════════\n` + lines.join('\n') +
+          `\n${t('inject.wrongs.usage')}`,
+        );
+      }
     }
     // 概念地图预习概念（仅概念精练）：以后学到时转详细掌握
     if (this.mode === 'drill') {
@@ -1085,6 +1095,7 @@ export class MainView extends ItemView {
   /** 结题后关闭会话：存档 + 清空状态（历史可通过「历史」按钮找回） */
   private async closeSession(): Promise<void> {
     await this.archiveIfNeeded(true);
+    void this.plugin.refreshProfileL2(); // 结题后刷新 L2 弱点画像
     this.systemPrompt = '';
     this.messages = [];
     this.savedCount = 0;
@@ -1724,6 +1735,12 @@ export class MainView extends ItemView {
     links.createEl('button', { text: t('records.chapterLedger'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(CHAPTER_PROGRESS_PATH));
     links.createEl('button', { text: t('records.questionLog'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/提问记录.md`));
     links.createEl('button', { text: t('records.termList'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/术语清单.md`));
+    links.createEl('button', { text: t('records.profile.regen'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+      void (async () => {
+        await this.plugin.refreshProfileL2();
+        new Notice(t('records.profile.done'));
+      })();
+    });
   }
 
   // ─── 复习 ────────────────────────────────────────────────
@@ -1756,6 +1773,21 @@ export class MainView extends ItemView {
         this.render();
       }).open();
     });
+
+    // P4 复习单：入口按钮 + 漂移徽章（源数据指纹与已生成单不一致时提示重生成）
+    const sheetSrc = {
+      terms: drillTerms.map(x => ({ term: x.term, subject: x.subject, status: x.status })),
+      points: due.filter(e => e.recurrence >= 2).map(e => ({ id: e.id, subject: e.subject, topic: e.topic, code: e.code, recurrence: e.recurrence })),
+      wrongs: openWas.map(w => ({ id: w.id, topic: w.topic, myError: w.myError, session: w.session })),
+      exprs: exprDue.map(x => ({ expr: x.expr, type: x.type })),
+    };
+    const fpFile = await this.plugin.reviewSheet.readFingerprint();
+    const sheetStale = fpFile !== null && fpFile !== ReviewSheetService.fingerprint(sheetSrc);
+    const sheetBtn = topRow.createEl('button', {
+      text: sheetStale ? t('review.sheet.stale') : t('review.sheet.generate'),
+      cls: 'asc-btn asc-btn-small' + (sheetStale ? ' asc-btn-cta' : ''),
+    });
+    sheetBtn.addEventListener('click', () => void this.generateReviewSheet());
 
     // 待确认的线下反馈卡片
     if (this.pendingFeedback) this.renderFeedbackCard(el, this.pendingFeedback);
@@ -1988,6 +2020,21 @@ export class MainView extends ItemView {
       input.value = t('wrong.prefill', { topic: w.topic, err: w.myError || '-', sess: w.session ? t('wrong.prefill.sess', { session: w.session }) : '' });
       input.focus();
     }
+  }
+
+  /** 生成复习单（P4）：四队到期项本地编译写入 记录/review-sheet.md */
+  private async generateReviewSheet(): Promise<void> {
+    const [due, terms, openWas, exprDue] = await Promise.all([
+      this.plugin.errorLog.dueEntries(), this.plugin.terms.load(), this.plugin.wrongAnswers.open(), this.plugin.expressions.due(),
+    ]);
+    await this.plugin.reviewSheet.generate({
+      terms: terms.filter(x => x.status !== '已稳定').map(x => ({ term: x.term, subject: x.subject, status: x.status })),
+      points: due.filter(e => e.recurrence >= 2).map(e => ({ id: e.id, subject: e.subject, topic: e.topic, code: e.code, recurrence: e.recurrence })),
+      wrongs: openWas.map(w => ({ id: w.id, topic: w.topic, myError: w.myError, session: w.session })),
+      exprs: exprDue.map(x => ({ expr: x.expr, type: x.type })),
+    });
+    new Notice(t('review.sheet.done', { path: '记录/review-sheet.md' }));
+    this.render();
   }
 }
 

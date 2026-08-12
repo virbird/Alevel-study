@@ -7,6 +7,7 @@ import type { ProfileService } from './ProfileService';
 import type { ErrorLogService } from './ErrorLogService';
 import type { ProgressService, WeakImpressionService, PracticeFocusService } from './QuestionLogService';
 import type { StatsService } from './StatsService';
+import type { ProfileL2Service } from './ProfileL2Service';
 import { ROOT } from './VaultService';
 import { getLang, t } from '../i18n';
 
@@ -24,6 +25,7 @@ export class PromptAssembler {
     private weakImpressions: WeakImpressionService,
     private practiceFocus: PracticeFocusService,
     private statsService: StatsService,
+    private profileL2: ProfileL2Service,
   ) {}
 
   meta(key: ModeKey) {
@@ -49,8 +51,19 @@ export class PromptAssembler {
     parts.push(t('prompt.today', { date: todayStr() }));
 
     if (unresolved.length) {
-      parts.push(`\n════════ ${t('prompt.inject.unresolved')} ════════\n` + this.renderUnresolved(unresolved) +
-        `\n${t('prompt.unresolved.usage')}`);
+      // 条目多且画像新鲜时注入压缩画像（省 token）；否则全表注入
+      let injected = false;
+      if (unresolved.length > 10 && meta.logName && (await this.profileL2.isFresh())) {
+        const sec = await this.profileL2.loadSection(meta.logName);
+        if (sec) {
+          parts.push(`\n════════ ${t('inject.profile.title')} ════════\n${sec}\n${t('inject.profile.usage')}`);
+          injected = true;
+        }
+      }
+      if (!injected) {
+        parts.push(`\n════════ ${t('prompt.inject.unresolved')} ════════\n` + this.renderUnresolved(unresolved) +
+          `\n${t('prompt.unresolved.usage')}`);
+      }
     } else {
       parts.push('\n' + t('prompt.noUnresolved'));
     }

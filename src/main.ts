@@ -10,6 +10,8 @@ import { PromptAssembler } from './services/PromptAssembler';
 import { InsightEngine } from './services/InsightEngine';
 import { SuggestionService } from './services/SuggestionService';
 import { StatsService } from './services/StatsService';
+import { ProfileL2Service } from './services/ProfileL2Service';
+import { ReviewSheetService } from './services/ReviewSheetService';
 import { WrongAnswerService } from './services/WrongAnswerService';
 import { ConceptMapService } from './services/ConceptMapService';
 import { ChapterProgressService } from './services/ChapterProgressService';
@@ -96,6 +98,8 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   voiceToken: { token: string; expireTime: number } | null = null;
   reports!: ReportService;
   assembler!: PromptAssembler;
+  profileL2!: ProfileL2Service;
+  reviewSheet!: ReviewSheetService;
   /** 当前批改任务（后台运行，雅思页签展示） */
   gradingTask: GradingTask | null = null;
   private gradingAbort: AbortController | null = null;
@@ -133,10 +137,12 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     this.engine = new InsightEngine(this.vaultService);
     this.suggestions = new SuggestionService(this.vaultService);
     this.stats = new StatsService(this.vaultService, this.engine);
+    this.profileL2 = new ProfileL2Service(this.vaultService, this.engine);
+    this.reviewSheet = new ReviewSheetService(this.vaultService);
     this.reports = new ReportService(this.vaultService, this.errorLog, this.engine, this.terms, this.ielts, this.suggestions, this.wrongAnswers);
     this.assembler = new PromptAssembler(
       this.vaultService, this.profiles, this.errorLog, this.progress,
-      this.weakImpressions, this.practiceFocus, this.stats,
+      this.weakImpressions, this.practiceFocus, this.stats, this.profileL2,
     );
 
     this.registerView(VIEW_TYPE, leaf => new MainView(leaf, this));
@@ -263,6 +269,14 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
+  /** 刷新 L2 弱点画像（结题后/分析周期/记录中心手动）；失败不阻塞主功能 */
+  async refreshProfileL2(): Promise<void> {
+    try {
+      const [entries, terms, was] = await Promise.all([this.errorLog.load(), this.terms.load(), this.wrongAnswers.load()]);
+      await this.profileL2.generate(entries, terms, was);
+    } catch { /* 画像失败不阻塞 */ }
+  }
+
   /** 状态栏徽标：待复习数 */
   async refreshStatusBar(): Promise<void> {
     try {
@@ -301,6 +315,14 @@ export default class ALevelStudyCoachPlugin extends Plugin {
         await this.stats.runQuestionWeekly();
         this.settings.lastWeeklyStats = wk;
         statsChanged = true;
+        // 周快照：P1/P2/P4 指标周环比数据源
+        const [termsSnap, wasSnap, exprSnap] = await Promise.all([this.terms.load(), this.wrongAnswers.load(), this.expressions.due()]);
+        await this.stats.appendSnapshot({
+          unresolved: entries.filter(e => e.status === '未消除').length,
+          unstable: termsSnap.filter(x => x.status === '未稳定').length,
+          openWrongs: wasSnap.filter(w => w.status === '未订正').length,
+          dueExprs: exprSnap.length,
+        });
       }
       const lastBi = this.settings.lastBiweeklyStats;
       if (!lastBi || daysBetween(lastBi, today) >= 14) {
@@ -309,6 +331,9 @@ export default class ALevelStudyCoachPlugin extends Plugin {
         statsChanged = true;
       }
       if (statsChanged) await this.saveSettings();
+
+      // L2 弱点画像随分析周期刷新（结题后亦刷新，见 MainView.closeSession）
+      await this.refreshProfileL2();
 
       const terms = await this.terms.load();
       const candidates = await this.engine.generateCandidates(entries, terms);

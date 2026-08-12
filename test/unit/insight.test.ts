@@ -5,6 +5,7 @@ import { StatsService } from '../../src/services/StatsService';
 import { SuggestionService, SUGGESTION_DIR } from '../../src/services/SuggestionService';
 import { PromptAssembler } from '../../src/services/PromptAssembler';
 import { ProfileService } from '../../src/services/ProfileService';
+import { ProfileL2Service } from '../../src/services/ProfileL2Service';
 import { ErrorLogService } from '../../src/services/ErrorLogService';
 import { ProgressService, WeakImpressionService, PracticeFocusService, QUESTION_LOG_PATH } from '../../src/services/QuestionLogService';
 import { seedLog } from './errorlog.test';
@@ -111,6 +112,7 @@ export async function run(): Promise<void> {
     new WeakImpressionService(v4.asService()),
     new PracticeFocusService(v4.asService()),
     new StatsService(v4.asService(), engine),
+    new ProfileL2Service(v4.asService(), engine),
   );
   const built = await assembler.buildSystemPrompt('Maths');
   check('模板缺失时返回 null', (await assembler.buildSystemPrompt('Chemistry')) === null);
@@ -128,6 +130,26 @@ export async function run(): Promise<void> {
   check('其他科目不注入 Maths 印象', !physBuilt!.prompt.includes('统计几何薄弱'));
   const ieltsBuilt = await assembler.buildSystemPrompt('ielts');
   check('雅思模式用教练模板', ieltsBuilt!.prompt.includes('雅思写作教练模板正文'));
+
+  // P3：未消除 >10 且画像新鲜 → 注入压缩画像替代全表；≤10 → 全表
+  const manyRows = Array.from({ length: 11 }, (_, i) =>
+    `| 1${String(i).padStart(2, '0')} | ${todayStr()} | Maths | AS | Topic${i} | 几何 | D | 描述 | 做法 | expr | 1 | 未消除 | ${addDays(todayStr(), 7)} |`);
+  const v5 = new FakeVault({ seed: {
+    'StudyCoach/prompts/prompt-maths.md': '数学教练模板正文',
+    'StudyCoach/档案.md': '---\nstage: "G10"\n---\n',
+    'StudyCoach/记录/error-log.md': seedLog(manyRows),
+  } });
+  const p2v5 = new ProfileL2Service(v5.asService(), engine);
+  await p2v5.generate(await new ErrorLogService(v5.asService()).load(), [], []);
+  const asm5 = new PromptAssembler(
+    v5.asService(), new ProfileService(v5.asService()), new ErrorLogService(v5.asService()),
+    new ProgressService(v5.asService()), new WeakImpressionService(v5.asService()),
+    new PracticeFocusService(v5.asService()), new StatsService(v5.asService(), engine), p2v5,
+  );
+  const built5 = await asm5.buildSystemPrompt('Maths');
+  check('>10 且新鲜：注入弱点画像', built5!.prompt.includes('weakness profile'));
+  check('>10 且新鲜：不注入全表', !built5!.prompt.includes('One-line description'));
+  check('≤10：维持全表注入', built!.prompt.includes('One-line description'));
   const extra = await assembler.buildSystemPrompt('Maths', ['════ 参考文档「笔记」════\n文档内容']);
   check('引用文档注入', extra!.prompt.includes('文档内容'));
 }

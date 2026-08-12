@@ -56,6 +56,20 @@ export class StatsService {
     return section.trim();
   }
 
+  /** 周快照：追加一行计数（P1/P2/P4 指标周环比数据源） */
+  async appendSnapshot(s: { unresolved: number; unstable: number; openWrongs: number; dueExprs: number }): Promise<void> {
+    const heading = '## 周快照';
+    const row = `| ${todayStr()} | ${s.unresolved} | ${s.unstable} | ${s.openWrongs} | ${s.dueExprs} |`;
+    const content = (await this.vault.read(STATS_PATH)) ?? '# 统计分析\n';
+    if (!content.includes(heading)) {
+      await this.vault.write(STATS_PATH,
+        content.replace(/\s*$/, '') +
+        `\n\n${heading}\n\n| 日期 | 未消除数 | 未稳定术语数 | 未订正错题数 | 到期表达数 |\n|---|---|---|---|---|\n${row}\n`);
+      return;
+    }
+    await this.vault.write(STATS_PATH, content.replace(/\s*$/, '') + `\n${row}\n`);
+  }
+
   private async replaceSection(heading: string, body: string): Promise<void> {
     const content = (await this.vault.read(STATS_PATH)) ?? '# 统计分析\n';
     const newSection = `${heading}\n\n${body}\n`;

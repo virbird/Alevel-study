@@ -39,6 +39,10 @@ tech base simplified-forked from AI Study Buddy.
 | 3-way routing | Specific losses → ledger; question-type habits → practice focus; vague claims → weakness impressions |
 | Records center | One tab shows all ledgers: A-Level error log + IELTS grades + expression library + question log (data files stay separate — zero information loss) |
 | Review reminders | The Review tab shows today's full due list in four queues: error-log points (per item: variant question / passed / recurred), term drills, expression sentence drills, wrong-answer follow-up (per-item "mastered after redo"); you can also practice offline — report results in natural language for batch parsing, or give per-item feedback directly; plus status-bar badge and one gentle daily notice |
+| Wrong-answer ↔ session backlink | Every wrong-answer entry records the session it occurred in; one click opens the original conversation from the records center / review queue, and "redo" prefills your mistake-at-the-time plus the session link |
+| Mastery progress badges | Each status shows the distance to the next state (e.g. "1 spot-check away from stable"); per-row "practice" buttons jump to the coach with a prefilled request (term spot-check / wrong redo / variant) |
+| Weakness profile (L2) | A compressed per-subject profile with ledger-ID backlinks, auto-refreshed after each conclude; injected instead of full tables when many entries are open (saves tokens); the manual-notes section survives regeneration |
+| Review sheet | One click compiles the four due queues into a single printable note (term flashcards / wrong redo / expression sentences); fingerprint drift detection flags a stale sheet for regeneration |
 | Quick capture | One natural-language sentence → AI suggests a category → accept / edit / discard |
 
 ### Weakness Analysis

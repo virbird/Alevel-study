@@ -647,6 +647,15 @@ const en: Dict = {
   'progress.log.two': '2 reviews away from resolved',
   'progress.wrong.redo': '1 redo away from corrected',
   'records.action.practice': 'Practice',
+  'inject.profile.title': 'Plugin injection: weakness profile (full ledgers at 记录/weakness-profile.md)',
+  'inject.profile.usage': 'Usage: the lines above are a compressed summary with evidence IDs; when the student asks about a related topic, quote the IDs to look up full ledger rows.',
+  'inject.wrongs.summaryTitle': 'Plugin injection: wrong-answer book overview',
+  'inject.wrongs.summary': '{n} open wrong answers in the book.',
+  'records.profile.regen': 'Regenerate weakness profile',
+  'records.profile.done': 'Weakness profile regenerated',
+  'review.sheet.generate': 'Review sheet',
+  'review.sheet.stale': 'Review sheet stale — regenerate',
+  'review.sheet.done': 'Review sheet generated: {path}',
 };
 
 const zh: Dict = {
@@ -1287,6 +1296,15 @@ const zh: Dict = {
   'progress.log.two': '还需 2 次复查',
   'progress.wrong.redo': '重做一次即订正',
   'records.action.practice': '去练',
+  'inject.profile.title': '插件注入：弱点画像（完整台账见 记录/weakness-profile.md）',
+  'inject.profile.usage': '使用方式：以上为带证据 ID 的压缩综述；学生问到相关考点时可引用 ID 查完整台账行。',
+  'inject.wrongs.summaryTitle': '插件注入：错题本概览',
+  'inject.wrongs.summary': '错题本未订正 {n} 条。',
+  'records.profile.regen': '重新生成弱点画像',
+  'records.profile.done': '弱点画像已重新生成',
+  'review.sheet.generate': '生成复习单',
+  'review.sheet.stale': '复习单已过期，点击重新生成',
+  'review.sheet.done': '复习单已生成：{path}',
 };
 
 let current: Lang = 'en';
