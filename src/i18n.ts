@@ -657,6 +657,7 @@ const en: Dict = {
   'review.sheet.stale': 'Review sheet stale — regenerate',
   'review.sheet.done': 'Review sheet generated: {path}',
   'coach.awaitCards': 'Concluded. Handle the register/ignore cards below — a new session opens automatically once all are handled (click Close problem again to skip).',
+  'review.points.notDue': '{n} unresolved entries not yet due — earliest review on {next}.',
 };
 
 const zh: Dict = {
@@ -1307,6 +1308,7 @@ const zh: Dict = {
   'review.sheet.stale': '复习单已过期，点击重新生成',
   'review.sheet.done': '复习单已生成：{path}',
   'coach.awaitCards': '结题完成。请先处理下方入库/忽略确认，全部处理后自动续开新会话（再点结题可跳过）。',
+  'review.points.notDue': '{n} 条未消除记录尚未到期——最早 {next} 复查。',
 };
 
 let current: Lang = 'en';

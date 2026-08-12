@@ -1827,7 +1827,13 @@ export class MainView extends ItemView {
     const b1 = queue('points', t('review.points'), t('review.points.badge', { n: due.length }), due.length > 0);
     if (b1) {
       if (!due.length) {
-        b1.createDiv({ text: t('review.points.empty'), cls: 'asc-empty' });
+        const open = (await this.plugin.errorLog.load()).filter(e => e.status !== '已消除');
+        if (open.length) {
+          const next = open.map(e => e.reviewDate).filter(d => d).sort()[0] ?? '-';
+          b1.createDiv({ text: t('review.points.notDue', { n: open.length, next }), cls: 'asc-empty' });
+        } else {
+          b1.createDiv({ text: t('review.points.empty'), cls: 'asc-empty' });
+        }
       }
       for (const e of due) {
         const item = b1.createDiv({ cls: 'asc-queue-item' });
