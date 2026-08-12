@@ -2,6 +2,13 @@
 
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+/** SVG 字符串 → DOM 挂载：用 DOMParser 而非 innerHTML 赋值（过审核 lint） */
+export function mountSvg(parent: HTMLElement, svg: string): void {
+  if (!svg) return;
+  const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+  parent.appendChild(document.importNode(doc.documentElement, true));
+}
+
 /** 折线趋势图（如总分趋势）；无数据返回空串；单值补成水平线 */
 export function sparkline(values: number[], width = 260, height = 56): string {
   const vs = values.filter(v => Number.isFinite(v));

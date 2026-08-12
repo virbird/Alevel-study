@@ -20,6 +20,8 @@ export async function streamRequest(
   await streamViaXHR(options, onChunk);
 }
 
+// 审核 Warning 决策记录：Obsidian 推荐 requestUrl，但它不支持流式响应（SSE/ReadableStream），
+// 流式场景必须保留 fetch；非流式降级路径走 XHR。
 async function streamViaFetch(options: StreamRequestOptions, onChunk: (text: string) => void): Promise<void> {
   const response = await fetch(options.url, {
     method: options.method,

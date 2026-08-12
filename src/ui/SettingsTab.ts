@@ -5,6 +5,9 @@ import { aliyunAsr, aliyunTts } from '../voice/AliyunNls';
 import { t, setLang, type Lang } from '../i18n';
 import { VIEW_TYPE } from './MainView';
 
+// 审核 Warning 决策记录：声明式设置 API（getSettingDefinitions）有意不实现——
+// minAppVersion=1.5.0 低于该 API 所需的 1.13.0，实现会使旧版 Obsidian 用户失去设置界面；
+// 待 minAppVersion 提升到 ≥1.13.0 时再重新评估。
 export class StudyCoachSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: ALevelStudyCoachPlugin) {
     super(app, plugin);
