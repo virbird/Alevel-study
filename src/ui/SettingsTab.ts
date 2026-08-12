@@ -114,10 +114,10 @@ export class StudyCoachSettingTab extends PluginSettingTab {
         const name = item.createDiv({ cls: 'asc-model-name' });
         if (m === def) name.createSpan({ text: '★ ', cls: 'asc-model-star' });
         name.createSpan({ text: m });
-        if (m === def) name.createSpan({ text: ' 默认', cls: 'asc-model-badge' });
+        if (m === def) name.createSpan({ text: ' ' + t('settings.model.default'), cls: 'asc-model-badge' });
         const actions = item.createDiv({ cls: 'asc-model-actions' });
         if (m !== def) {
-          actions.createEl('button', { text: '设为默认', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+          actions.createEl('button', { text: t('settings.model.setDefault'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
             void (async () => {
               await this.plugin.setModelDefault(m);
               new Notice(t('settings.llm.defaultSet', { name: m }));
@@ -277,7 +277,7 @@ export class StudyCoachSettingTab extends PluginSettingTab {
       .addButton(b =>
         b.setButtonText(t('settings.voice.playbackBtn')).onClick(() => {
           void (async () => {
-            b.setButtonText('测试中…').setDisabled(true);
+            b.setButtonText(t('settings.voice.testing')).setDisabled(true);
             try {
               const vcfg = await this.plugin.loadVoiceConfig();
               const token = await this.plugin.getNlsToken();
@@ -305,11 +305,11 @@ export class StudyCoachSettingTab extends PluginSettingTab {
                 void el.play().catch(() => resolve());
               });
               URL.revokeObjectURL(url);
-              void this.plugin.voiceDiag('TTS 播报测试', `合成 ${audio.byteLength} 字节 · 解码 ${buf.duration.toFixed(1)}s · ctx ${state0}→${state1} · 双路径（WebAudio+<audio>）已顺序播放`);
+              void this.plugin.voiceDiag(t('settings.voice.diag.playback'), t('settings.voice.diag.playbackOk', { bytes: audio.byteLength, dur: buf.duration.toFixed(1), s0: state0, s1: state1 }));
               new Notice(t('settings.voice.playbackOk', { s0: state0, s1: state1 }), 12000);
             } catch (e) {
               const msg = e instanceof Error ? e.message : String(e);
-              void this.plugin.voiceDiag('TTS 播报测试', `失败：${msg}`);
+              void this.plugin.voiceDiag(t('settings.voice.diag.playback'), t('settings.voice.diag.fail', { msg }));
               new Notice(t('settings.voice.playbackFail', { msg }), 10000);
             } finally {
               b.setButtonText(t('settings.voice.playbackBtn')).setDisabled(false);
@@ -347,10 +347,10 @@ export class StudyCoachSettingTab extends PluginSettingTab {
             const vcfg = await this.plugin.loadVoiceConfig();
             const token = await this.plugin.getNlsToken();
             const audio = await aliyunTts('Hello, this is a connection test.', { token, appKey: vcfg.aliyunAppKey, voice: vcfg.ttsVoice });
-            void this.plugin.voiceDiag('TTS 链路测试', `合成成功 ${audio.byteLength} 字节 voice=${vcfg.ttsVoice}`);
+            void this.plugin.voiceDiag(t('settings.voice.diag.chain'), t('settings.voice.diag.chainOk', { bytes: audio.byteLength, voice: vcfg.ttsVoice }));
             new Notice(t('settings.voice.ttsOk', { bytes: audio.byteLength }), 6000);
           } catch (e) {
-            void this.plugin.voiceDiag('TTS 链路测试', `失败：${e instanceof Error ? e.message : String(e)}`);
+            void this.plugin.voiceDiag(t('settings.voice.diag.chain'), t('settings.voice.diag.fail', { msg: e instanceof Error ? e.message : String(e) }));
             new Notice(t('settings.voice.diagFail', { msg: e instanceof Error ? e.message : String(e) }), 10000);
           } finally {
             b.setButtonText(t('settings.voice.ttsTest')).setDisabled(false);

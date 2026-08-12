@@ -4,6 +4,7 @@ import type { VaultService } from './VaultService';
 import { ROOT } from './VaultService';
 import type { LlmClient } from '../llm/LlmClient';
 import type { SuggestionCandidate } from './InsightEngine';
+import { t } from '../i18n';
 
 export const SUGGESTION_DIR = `${ROOT}/建议`;
 
@@ -94,24 +95,18 @@ export class SuggestionService {
    * 建议面向线下执行（辅助工具定位），不排日程表。
    */
   async generatePlan(s: Suggestion, llm: LlmClient, profileSummary: string): Promise<string> {
-    const system = `你是 A-Level 学习教练。学生档案：${profileSummary}
-请基于下面的弱点诊断与证据，生成一份学习建议。要求：
-1. 结构：「诊断」（两三句话说清弱点的性质）+「线下动作」（3-5 条具体可执行的练习/学习方法，用题型特征描述，不编题号）+「插件内动作」（如术语抽查、概念精练、复习队列相关，可为空）。
-2. 动作必须具体到可以直接做，例如「这周练 3 道杠杆平衡变式，画图先标受力点」，不要空泛的「多加练习」。
-3. 不排日程表——建议是带回线下执行的。
-4. 遵守 CIE/光华剑桥三年制背景：G10 不碰 STEP；进阶考试要求每年可能变化。
-5. 直接输出 Markdown，不要 JSON 代码块。`;
+    const system = t('suggest.planSystem', { profile: profileSummary });
     const plan = await llm.chat({
       system,
-      messages: [{ role: 'user', content: `弱点：${s.title}\n\n证据：\n${s.body}` }],
+      messages: [{ role: 'user', content: t('suggest.llmInput', { title: s.title, body: s.body }) }],
       maxTokens: 1200,
       temperature: 0.4,
     });
     const content = await this.vault.read(s.file);
-    if (!content) throw new Error('建议文件读取失败');
+    if (!content) throw new Error(t('suggest.fileReadFail'));
     const { data, body } = parseSimpleFrontmatter(content);
     data.status = '已处理';
-    await this.vault.write(s.file, stringifySimpleFrontmatter(data, body + `\n## 学习建议（${todayStr()} 生成）\n\n${plan.trim()}\n`));
+    await this.vault.write(s.file, stringifySimpleFrontmatter(data, body + `\n${t('suggest.planHeading', { date: todayStr() })}\n\n${plan.trim()}\n`));
     return plan;
   }
 }

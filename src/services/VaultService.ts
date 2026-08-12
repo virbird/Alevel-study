@@ -1,4 +1,5 @@
 import { App, Notice, TFile, TFolder } from 'obsidian';
+import { t } from '../i18n';
 
 export const ROOT = 'StudyCoach';
 
@@ -266,7 +267,7 @@ export class VaultService {
 
       await this.seedPrompts();
     } catch (e) {
-      new Notice(`StudyCoach 初始化失败：${e instanceof Error ? e.message : String(e)}`);
+      new Notice(t('vault.initFail', { msg: e instanceof Error ? e.message : String(e) }));
     }
   }
 

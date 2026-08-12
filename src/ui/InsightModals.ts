@@ -1,7 +1,7 @@
 import { App, MarkdownRenderer, Modal, Notice, Setting, TFile } from 'obsidian';
 import type ALevelStudyCoachPlugin from '../main';
 import { PromptModal } from './PromptModal';
-import { t } from '../i18n';
+import { t, statusLabel, kindLabel } from '../i18n';
 import type { Suggestion } from '../services/SuggestionService';
 import { buildDrillSystemPrompt } from '../services/TermService';
 import type { TermEntry } from '../services/TermService';
@@ -23,7 +23,7 @@ export class SuggestionModal extends Modal {
     const { contentEl } = this;
     contentEl.addClass('asc-modal');
     contentEl.createEl('h2', { text: this.suggestion.title });
-    contentEl.createDiv( { text: `${this.suggestion.kind} · ${this.suggestion.created} · ${this.suggestion.status}`, cls: 'asc-muted' });
+    contentEl.createDiv( { text: `${kindLabel(this.suggestion.kind)} · ${this.suggestion.created} · ${statusLabel(this.suggestion.status)}`, cls: 'asc-muted' });
 
     const bodyEl = contentEl.createDiv();
     void MarkdownRenderer.render(this.app, this.suggestion.body, bodyEl, '', this.renderScope);

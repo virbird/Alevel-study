@@ -204,7 +204,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     } catch (e) {
       // 诊断日志：Token 失败同步落盘，便于排障（不阻塞报错上抛）
       try {
-        await this.vaultService.append(`${SPEAKING_REPORT_DIR}/语音日志.md`, formatVoiceLogLine('ERROR', 'Token 获取', e instanceof Error ? e.message : String(e)));
+        await this.vaultService.append(`${SPEAKING_REPORT_DIR}/语音日志.md`, formatVoiceLogLine('ERROR', t('voice.stage.token'), e instanceof Error ? e.message : String(e)));
       } catch { /* 日志失败不影响报错 */ }
       throw e;
     }
@@ -337,7 +337,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
    */
   async gradeFilePath(path: string): Promise<void> {
     if (!this.llm.configured) {
-      new Notice('请先在设置里配置 LLM');
+      new Notice(t('main.llmRequired'));
       return;
     }
     if (this.gradingTask?.status === 'running') {
@@ -460,7 +460,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   /** 表达造句抽查：到期表达入队 */
   async startExpressionDrill(): Promise<void> {
     if (!this.llm.configured) {
-      new Notice('请先在设置里配置 LLM');
+      new Notice(t('main.llmRequired'));
       return;
     }
     const due = await this.expressions.due();

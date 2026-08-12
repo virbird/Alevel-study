@@ -4,6 +4,7 @@ import { parseTable } from '../utils/markdown';
 import { todayStr, parseDate, daysBetween } from '../utils/date';
 import { QUESTION_LOG_PATH } from './QuestionLogService';
 import type { VaultService } from './VaultService';
+import { t } from '../i18n';
 
 export interface QuestionTagRow {
   date: string;
@@ -136,11 +137,11 @@ export class InsightEngine {
         out.push({
           key: `提问热点|${h.subject}|${h.topic.toLowerCase()}`,
           kind: '提问热点',
-          title: `${h.subject} 的 ${h.topic} 最近两周求助 ${h.count} 次`,
+          title: t('insight.heat.title', { subject: h.subject, topic: h.topic, n: h.count }),
           evidence: [
-            `近 14 天在 ${h.topic} 上求助 ${h.count} 次（最近 ${h.last}）`,
-            `困惑类型：${h.confusions.join('、') || '未记录'}`,
-            h.confusions.includes('概念不懂') ? '含「概念不懂」——可能是基础理解没到位，而不只是熟练度问题' : '',
+            t('insight.heat.ev1', { topic: h.topic, n: h.count, last: h.last }),
+            t('insight.heat.ev2', { list: h.confusions.join('、') || t('insight.heat.noRecord') }),
+            h.confusions.includes('概念不懂') ? t('insight.heat.ev3') : '',
           ].filter(Boolean),
         });
       }
@@ -151,11 +152,11 @@ export class InsightEngine {
       out.push({
         key: `复发热点|${e.subject}|${e.topic.toLowerCase()}|${e.code.toUpperCase()}`,
         kind: '复发热点',
-        title: `${e.subject}「${e.topic}」已复发 ${e.recurrence} 次（${e.code}）`,
+        title: t('insight.relapse.title', { subject: e.subject, topic: e.topic, n: e.recurrence, code: e.code }),
         evidence: [
-          `失分描述：${e.desc}`,
-          e.fix ? `正确做法：${e.fix}` : '',
-          '按提示词规则，复发 3 次以上的代码优先级高于题目本身，需要专门检查环节',
+          t('insight.relapse.ev1', { desc: e.desc }),
+          e.fix ? t('insight.relapse.ev2', { fix: e.fix }) : '',
+          t('insight.relapse.ev3'),
         ].filter(Boolean),
       });
     }
@@ -168,11 +169,11 @@ export class InsightEngine {
       out.push({
         key: `表达码趋势|${today.slice(0, 7)}`,
         kind: '表达码趋势',
-        title: `英文表达类失分近两周共 ${exprTotal} 次`,
+        title: t('insight.expr.title', { n: exprTotal }),
         evidence: [
-          expr.map(c => `${c.code} ×${c.count}`).join('、'),
-          '这些码与雅思 LR/GRA 是同一能力——术语训练同时也在练雅思',
-          '建议：做题前先做 5 分钟概念精练（定义成分计数 + 口语词拦截）',
+          expr.map(c => `${c.code} ×${c.count}`).join(' · '),
+          t('insight.expr.ev2'),
+          t('insight.expr.ev3'),
         ],
       });
     }
@@ -183,10 +184,10 @@ export class InsightEngine {
       out.push({
         key: `术语未稳定|${today.slice(0, 7)}`,
         kind: '术语未稳定',
-        title: `${unstable.length} 个术语处于未稳定状态`,
+        title: t('insight.terms.title', { n: unstable.length }),
         evidence: [
-          `示例：${unstable.slice(0, 5).map(t => t.term).join('、')}`,
-          '建议：每周一次模式 E 抽查（复习页签发起），把抽查通过一次升为观察中',
+          t('insight.terms.ev1', { list: unstable.slice(0, 5).map(x => x.term).join(' · ') }),
+          t('insight.terms.ev2'),
         ],
       });
     }
@@ -198,10 +199,10 @@ export class InsightEngine {
       out.push({
         key: `复查堆积|${today}`,
         kind: '复查堆积',
-        title: `复查队列堆积 ${overdue.length} 条`,
+        title: t('insight.overdue.title', { n: overdue.length }),
         evidence: [
-          `最痛的几条：${worst.map(e => `${e.topic}（复发 ${e.recurrence}）`).join('、')}`,
-          '建议：不必全清，先处理最痛的 3 条（复习页签已按复发×逾期排序）',
+          t('insight.overdue.ev1', { list: worst.map(e => t('insight.overdue.item', { topic: e.topic, n: e.recurrence })).join(' · ') }),
+          t('insight.overdue.ev2'),
         ],
       });
     }

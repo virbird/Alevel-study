@@ -1,6 +1,6 @@
 import { ItemView, MarkdownRenderer, Notice, Platform, TFile, WorkspaceLeaf } from 'obsidian';
 import type ALevelStudyCoachPlugin from '../main';
-import { t } from '../i18n';
+import { t, statusLabel, modeLabel, kindLabel } from '../i18n';
 import { SUBJECTS } from '../types';
 import type { ChatMessage, ErrorLogEntry, ModeKey, SessionTag } from '../types';
 import { extractJson } from '../llm/LlmClient';
@@ -247,7 +247,7 @@ export class MainView extends ItemView {
       for (const s of pending.slice(0, 3)) {
         const card = el.createDiv({ cls: 'asc-card asc-suggest-card' });
         card.createDiv( { text: s.title, cls: 'asc-card-title' });
-        card.createDiv( { text: `${s.kind} · ${s.created}`, cls: 'asc-muted' });
+        card.createDiv( { text: `${kindLabel(s.kind)} · ${s.created}`, cls: 'asc-muted' });
         const btns = card.createDiv({ cls: 'asc-row' });
         btns.createEl('button', { text: t('home.seeSuggest'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => {
           new SuggestionModal(this.app, this.plugin, s, () => this.render()).open();
@@ -550,7 +550,7 @@ export class MainView extends ItemView {
             hintEl.setText(t('coach.mic.recording'));
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            void this.voiceLog('ERROR', '录音启动', msg);
+            void this.voiceLog('ERROR', t('voice.stage.recStart'), msg);
             new Notice(t('coach.voice.startFail', { msg }), 8000);
           }
         })();
@@ -566,11 +566,11 @@ export class MainView extends ItemView {
           try {
             const vcfg = await this.plugin.loadVoiceConfig();
             const res = await rec.stop();
-            void this.voiceLog('INFO', '录音完成', `${res.seconds.toFixed(1)} 秒 · PCM ${(res.pcm.length * 2 / 1024).toFixed(0)} KB · appKey=${vcfg.aliyunAppKey ? '已配置' : '空'}`);
+            void this.voiceLog('INFO', t('voice.stage.recDone'), t('voice.recDone.detail', { s: res.seconds.toFixed(1), kb: (res.pcm.length * 2 / 1024).toFixed(0), ak: vcfg.aliyunAppKey ? t('voice.appKey.set') : t('voice.appKey.empty') }));
             if (vcfg.saveRecordings) void this.saveRecording(res.wav);
             if (res.seconds < 0.5) {
               hintEl.setText(HINT_DEFAULT);
-              void this.voiceLog('WARN', '录音过短', `${res.seconds.toFixed(2)} 秒，已拦截`);
+              void this.voiceLog('WARN', t('voice.stage.recShort'), t('voice.recShort.detail', { s: res.seconds.toFixed(2) }));
               new Notice(t('coach.voice.tooShort'));
               return;
             }
@@ -581,17 +581,17 @@ export class MainView extends ItemView {
             });
             hintEl.setText(HINT_DEFAULT);
             if (!text.trim()) {
-              void this.voiceLog('WARN', '识别为空', `音频 ${res.seconds.toFixed(1)} 秒但无识别结果（检查麦克风音量/环境）`);
+              void this.voiceLog('WARN', t('voice.stage.recEmpty'), t('voice.recEmpty.detail', { s: res.seconds.toFixed(1) }));
               new Notice(t('coach.voice.empty'));
               return;
             }
-            void this.voiceLog('INFO', '识别成功', `${text.length} 字`);
+            void this.voiceLog('INFO', t('voice.stage.recOk'), t('voice.recOk.detail', { n: text.length }));
             input.value = text;
             doSend();
           } catch (err) {
             hintEl.setText(HINT_DEFAULT);
             const msg = err instanceof Error ? err.message : String(err);
-            void this.voiceLog('ERROR', '语音失败', msg);
+            void this.voiceLog('ERROR', t('voice.stage.fail'), msg);
             new Notice(t('coach.voice.fail', { msg }), 8000);
           }
         })();
@@ -759,20 +759,20 @@ export class MainView extends ItemView {
     // 未订正错题跟进（错题本台账）：让教练遇到相关题目时顺势让学生重做
     const openWas = await this.plugin.wrongAnswers.open();
     if (openWas.length) {
-      const lines = openWas.map(w => `- 【${w.subject}】${w.topic}：${w.myError || '（未记错误描述）'}（错因码 ${w.code || '-'}）`);
+      const lines = openWas.map(w => t('inject.wrongs.line', { subject: w.subject, topic: w.topic, err: w.myError || t('inject.wrongs.noDesc'), code: w.code || '-' }));
       extras.push(
-        '════════ 插件注入：未订正的错题（来自错题本）════════\n' + lines.join('\n') +
-        '\n使用方式：学生来问相关题目/考点时，先让他自己重做一遍这些错题再讨论；不主动占用会话时间逐一清算。',
+        `════════ ${t('inject.wrongs.title')} ════════\n` + lines.join('\n') +
+        `\n${t('inject.wrongs.usage')}`,
       );
     }
     // 概念地图预习概念（仅概念精练）：以后学到时转详细掌握
     if (this.mode === 'drill') {
       const previews = await this.plugin.conceptMap.pendingDetail();
       if (previews.length) {
-        const plines = previews.map(p => `- 【${p.subject}】${p.chapter}：${p.concept}（${p.status}）`);
+        const plines = previews.map(p => `- 【${p.subject}】${p.chapter}：${p.concept}（${statusLabel(p.status)}）`);
         extras.push(
-          '════════ 插件注入：概念地图中的预习概念（尚未详细学习）════════\n' + plines.join('\n') +
-          '\n使用方式：学生练到这些概念时是首次详细掌握，可从 A/B 正常练；练完让他确认「把 X 改为已学」。',
+          `════════ ${t('inject.preview.title')} ════════\n` + plines.join('\n') +
+          `\n${t('inject.preview.usage')}`,
         );
       }
     }
@@ -789,19 +789,16 @@ export class MainView extends ItemView {
           const tlines = terms.map(t => `  - ${t.term}: ${t.def}`).join('\n');
           const skills = c ? ChapterProgressService.parseSkillsFocus(c) : '';
           const syllabusOnly = c ? ChapterProgressService.parseSyllabusOnly(c) : '';
-          let block = `【${ch.chapter}】${ch.status === '已掌握' ? '（已掌握，可抽查复习）' : '（解锁学习中）'}\n${tlines || '（内容文件暂无术语表）'}`;
-          if (skills) block += `\n  【技能重点（教材方法基准）】\n${skills.split('\n').map(l => '  ' + l).join('\n')}`;
-          if (syllabusOnly) block += `\n  【⚠️ 考纲独有考点（教材未覆盖，必强调）】\n${syllabusOnly.split('\n').map(l => '  ' + l).join('\n')}`;
+          let block = `【${ch.chapter}】${ch.status === '已掌握' ? t('inject.chapters.mastered') : t('inject.chapters.studying')}\n${tlines || t('inject.chapters.noTerms')}`;
+          if (skills) block += `\n  ${t('inject.chapters.skills')}\n${skills.split('\n').map(l => '  ' + l).join('\n')}`;
+          if (syllabusOnly) block += `\n  ${t('inject.chapters.syllabus')}\n${syllabusOnly.split('\n').map(l => '  ' + l).join('\n')}`;
           if (size + block.length > 6000) break; // 注入限量，避免占用上下文
           size += block.length;
           blocks.push(block);
         }
-        const subjCn = subject === 'Economics' ? '经济' : subject === 'Chemistry' ? '化学' : subject === 'Physics' ? '物理' : '计算机';
         extras.push(
-          `════════ 插件注入：已解锁的${subjCn}章节（章节进度）════════\n` + blocks.join('\n') +
-          '\n使用方式：这些章节是当前学习与复习的聚焦范围；定义为 syllabus 口径，学生提供课本原文时以课本为准；未解锁章节不主动训练。' +
-          '「技能重点」是教材方法基准：模式 B 成分拆解、模式 F 关系图时以此为校对基准；' +
-          '「⚠️ 考纲独有考点」是考试要求但教材未覆盖的内容：学习与复习时主动强调，相关概念练完时单独提醒其重要性。',
+          `════════ ${t('inject.chapters.title', { subj: t(`subject.${subject}`) })} ════════\n` + blocks.join('\n') +
+          `\n${t('inject.chapters.usage')}`,
         );
       }
     }
@@ -810,8 +807,8 @@ export class MainView extends ItemView {
       if (c) {
         // 图片 embed 换成标记，真实图片随下一条消息发送（见 openAttachPicker）
         const marked = this.plugin.ielts.markImagesInText(c);
-        const truncated = marked.length > 20000 ? marked.slice(0, 20000) + '\n……（内容过长已截断）' : marked;
-        extras.push(`════════ 插件注入：参考文档「${a.name}」════════\n以下是学生指定的参考文档，讨论时以它为准（[图片: 名] 标记对应的图片会随消息发送）：\n${truncated}`);
+        const truncated = marked.length > 20000 ? marked.slice(0, 20000) + '\n' + t('inject.doc.truncated') : marked;
+        extras.push(`════════ ${t('inject.doc.title', { name: a.name })} ════════\n${t('inject.doc.usage')}\n${truncated}`);
       }
     }
     const built = await this.plugin.assembler.buildSystemPrompt(this.mode, extras);
@@ -1243,7 +1240,7 @@ export class MainView extends ItemView {
     const row = bar.createDiv({ cls: 'asc-row' });
     // 模式选择：台账按模考/陪练/讨论区分趋势
     const modeSel = row.createEl('select', { cls: 'asc-select' });
-    for (const m of ['模考', '陪练', '讨论']) modeSel.createEl('option', { text: m, value: m });
+    for (const [v, k] of [['模考', 'speaking.mode.mock'], ['陪练', 'speaking.mode.sparring'], ['讨论', 'speaking.mode.discussion']] as const) modeSel.createEl('option', { text: t(k), value: v });
     row.createEl('button', { text: t('speaking.register'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
       void (async () => {
         (ev.target as HTMLElement).setAttr('disabled', 'true');
@@ -1282,7 +1279,7 @@ export class MainView extends ItemView {
     if (!sents.length) return;
     const ctx = this.ensureAudioCtx();
     if (!ctx) {
-      void this.voiceLog('ERROR', 'TTS 播报', '当前环境不支持 Web Audio');
+      void this.voiceLog('ERROR', t('voice.stage.tts'), t('voice.tts.noWebAudio'));
       return;
     }
     try {
@@ -1297,7 +1294,7 @@ export class MainView extends ItemView {
         await ctx.resume().catch(() => undefined);
         const st: string = ctx.state; // resume 会改变 state，需宽类型读取避免 TS 窄化误报
         if (st !== 'running') {
-          void this.voiceLog('WARN', 'TTS 播报', `AudioContext state=${st}（iOS 未解锁：需先点一次🎤或发送）`);
+          void this.voiceLog('WARN', t('voice.stage.tts'), t('voice.tts.locked', { st }));
           new Notice(t('coach.ttsNotUnlocked'), 8000);
         }
       }
@@ -1318,7 +1315,7 @@ export class MainView extends ItemView {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      void this.voiceLog('ERROR', 'TTS 播报', msg);
+      void this.voiceLog('ERROR', t('voice.stage.tts'), msg);
       new Notice(t('coach.ttsFail', { msg }), 6000);
     } finally {
       this.ttsSource = null;
@@ -1500,7 +1497,7 @@ export class MainView extends ItemView {
       for (const s of ['Maths', 'Physics', 'Chem', 'CS', 'Econ']) subjectSel.createEl('option', { text: s, value: s });
       const statusSel = bar.createEl('select', { cls: 'asc-select' });
       statusSel.createEl('option', { text: t('records.allStatus'), value: '' });
-      for (const s of ['未消除', '观察中', '已消除']) statusSel.createEl('option', { text: s, value: s });
+      for (const s of ['未消除', '观察中', '已消除']) statusSel.createEl('option', { text: statusLabel(s), value: s });
       const tableWrap = b1.createDiv({ cls: 'asc-table-wrap' });
       const draw = () => {
         tableWrap.empty();
@@ -1513,10 +1510,10 @@ export class MainView extends ItemView {
         }
         const table = tableWrap.createEl('table', { cls: 'asc-table' });
         const head = table.createEl('tr');
-        for (const h of ['ID', '日期', '科目', '层级', '考点(EN)', '代码', '描述', '复发', '状态', '复查日期']) head.createEl('th', { text: h });
+        for (const h of t('records.cols.errorlog').split('|')) head.createEl('th', { text: h });
         for (const e of filtered.slice(0, ROW_CAP)) {
           const tr = table.createEl('tr');
-          for (const cell of [e.id, e.date, e.subject, e.level, e.topic, e.code, e.desc, String(e.recurrence), e.status, e.reviewDate]) tr.createEl('td', { text: cell });
+          for (const cell of [e.id, e.date, e.subject, e.level, e.topic, e.code, e.desc, String(e.recurrence), statusLabel(e.status), e.reviewDate]) tr.createEl('td', { text: cell });
         }
         if (filtered.length > ROW_CAP) tableWrap.createDiv({ text: t('records.onlyRecent', { n: ROW_CAP, total: filtered.length }), cls: 'asc-muted' });
       };
@@ -1535,7 +1532,7 @@ export class MainView extends ItemView {
         const wrap = b2.createDiv({ cls: 'asc-table-wrap' });
         const st = wrap.createEl('table', { cls: 'asc-table' });
         const shead = st.createEl('tr');
-        for (const h of ['日期', '来源', '总分', 'TR', 'CC', 'LR', 'GRA']) shead.createEl('th', { text: h });
+        for (const h of t('records.cols.grades').split('|')) shead.createEl('th', { text: h });
         for (const s of [...scores].reverse().slice(0, ROW_CAP)) {
           const tr = st.createEl('tr');
           tr.createEl('td', { text: s.date });
@@ -1557,12 +1554,12 @@ export class MainView extends ItemView {
         const wrap = b3.createDiv({ cls: 'asc-table-wrap' });
         const et = wrap.createEl('table', { cls: 'asc-table' });
         const ehead = et.createEl('tr');
-        for (const h of ['表达', '类型', '来源', '入库日期', '状态']) ehead.createEl('th', { text: h });
+        for (const h of t('records.cols.exprs').split('|')) ehead.createEl('th', { text: h });
         for (const x of exprs.slice(0, ROW_CAP)) {
           const tr = et.createEl('tr');
-          for (const cell of [x.expr, x.type, x.source, x.date, x.status]) tr.createEl('td', { text: cell });
+          for (const cell of [x.expr, x.type, x.source, x.date, statusLabel(x.status)]) tr.createEl('td', { text: cell });
         }
-        if (exprs.length > ROW_CAP) wrap.createDiv({ text: `… 仅显示最近 ${ROW_CAP} 条，全 ${exprs.length} 条见积累库.md`, cls: 'asc-muted' });
+        if (exprs.length > ROW_CAP) wrap.createDiv({ text: t('records.onlyRecentExpr', { n: ROW_CAP, total: exprs.length }), cls: 'asc-muted' });
       }
     }
 
@@ -1577,10 +1574,10 @@ export class MainView extends ItemView {
         const wrap = b4.createDiv({ cls: 'asc-table-wrap' });
         const wt = wrap.createEl('table', { cls: 'asc-table' });
         const whead = wt.createEl('tr');
-        for (const h of ['ID', '日期', '科目', '考点(EN)', '我的错误', '错因码', '答案来源', '状态']) whead.createEl('th', { text: h });
+        for (const h of t('records.cols.wrongs').split('|')) whead.createEl('th', { text: h });
         for (const w of [...was].reverse().slice(0, ROW_CAP)) {
           const tr = wt.createEl('tr');
-          for (const cell of [w.id, w.date, w.subject, w.topic, w.myError, w.code, w.answerSource, w.status]) tr.createEl('td', { text: cell });
+          for (const cell of [w.id, w.date, w.subject, w.topic, w.myError, w.code, w.answerSource, statusLabel(w.status)]) tr.createEl('td', { text: cell });
         }
       }
     }
@@ -1595,7 +1592,7 @@ export class MainView extends ItemView {
         const wrap = b5.createDiv({ cls: 'asc-table-wrap' });
         const tt = wrap.createEl('table', { cls: 'asc-table' });
         const thead = tt.createEl('tr');
-        for (const h of ['日期', '科目', '考点(EN)', '困惑类型', '求助深度']) thead.createEl('th', { text: h });
+        for (const h of t('records.cols.questions').split('|')) thead.createEl('th', { text: h });
         for (const t of tags) {
           const tr = tt.createEl('tr');
           for (const cell of [t.date, t.subject, t.topic, t.confusion, t.depth]) tr.createEl('td', { text: cell });
@@ -1614,12 +1611,12 @@ export class MainView extends ItemView {
         const wrap = b6.createDiv({ cls: 'asc-table-wrap' });
         const ct = wrap.createEl('table', { cls: 'asc-table' });
         const chead = ct.createEl('tr');
-        for (const h of ['章节', '概念', '科目', '状态', '更新日期']) chead.createEl('th', { text: h });
+        for (const h of t('records.cols.conceptmap').split('|')) chead.createEl('th', { text: h });
         for (const c of cms.slice(0, ROW_CAP)) {
           const tr = ct.createEl('tr');
-          for (const cell of [c.chapter, c.concept, c.subject, c.status, c.date]) tr.createEl('td', { text: cell });
+          for (const cell of [c.chapter, c.concept, c.subject, statusLabel(c.status), c.date]) tr.createEl('td', { text: cell });
         }
-        if (cms.length > ROW_CAP) wrap.createDiv({ text: `… 仅显示最近 ${ROW_CAP} 条，全 ${cms.length} 条见概念地图.md`, cls: 'asc-muted' });
+        if (cms.length > ROW_CAP) wrap.createDiv({ text: t('records.onlyRecentCm', { n: ROW_CAP, total: cms.length }), cls: 'asc-muted' });
       }
     }
 
@@ -1633,12 +1630,12 @@ export class MainView extends ItemView {
         const wrap = b7.createDiv({ cls: 'asc-table-wrap' });
         const st = wrap.createEl('table', { cls: 'asc-table' });
         const shead = st.createEl('tr');
-        for (const h of ['日期', '模式', 'FC', 'LR', 'GRA', 'P', '总分', '最大问题']) shead.createEl('th', { text: h });
+        for (const h of t('records.cols.speaking').split('|')) shead.createEl('th', { text: h });
         for (const s of [...sps].reverse().slice(0, ROW_CAP)) {
           const tr = st.createEl('tr');
-          for (const cell of [s.date, s.mode, s.fc, s.lr, s.gra, s.p, s.overall, s.issue]) tr.createEl('td', { text: cell });
+          for (const cell of [s.date, modeLabel(s.mode), s.fc, s.lr, s.gra, s.p, s.overall, s.issue]) tr.createEl('td', { text: cell });
         }
-        if (sps.length > ROW_CAP) wrap.createDiv({ text: `… 仅显示最近 ${ROW_CAP} 条，全 ${sps.length} 条见口语记录.md`, cls: 'asc-muted' });
+        if (sps.length > ROW_CAP) wrap.createDiv({ text: t('records.onlyRecentSp', { n: ROW_CAP, total: sps.length }), cls: 'asc-muted' });
       }
     }
 
@@ -1651,7 +1648,7 @@ export class MainView extends ItemView {
         b8.createDiv({ text: t('records.chapters.empty'), cls: 'asc-empty' });
       }
       // 按科目分组折叠：每组标题显示科目 + 章节数/解锁数，默认收起（避免 58 章平铺）
-      const SUBJECT_LABEL: Record<string, string> = { Economics: '📘 Economics 经济', Chemistry: '🧪 Chemistry 化学' };
+      const SUBJECT_LABEL: Record<string, string> = { Economics: t('records.subject.econ'), Chemistry: t('records.subject.chem') };
       const groups = new Map<string, ChapterEntry[]>();
       for (const c of chs) {
         const list = groups.get(c.subject) ?? [];
@@ -1675,7 +1672,7 @@ export class MainView extends ItemView {
           const row = body.createDiv({ cls: 'asc-queue-item' });
           const head2 = row.createDiv({ cls: 'asc-row' });
           head2.createSpan({ text: `${c.chapter}`, cls: 'asc-strong' });
-          head2.createSpan({ text: c.status + (c.unlocked ? `（${c.unlocked}）` : ''), cls: 'asc-muted' });
+          head2.createSpan({ text: statusLabel(c.status) + (c.unlocked ? `（${c.unlocked}）` : ''), cls: 'asc-muted' });
           const btns = row.createDiv({ cls: 'asc-row' });
           if (c.status === '锁定') {
             btns.createEl('button', { text: t('records.chapters.unlock'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => {
@@ -1738,10 +1735,10 @@ export class MainView extends ItemView {
     fbBtn.setAttr('title', t('review.offline.title'));
     fbBtn.addEventListener('click', () => {
       const ctx = [
-        drillTerms.map(t => `- ${t.term}（${t.status}）`).join('\n') || '（无）',
-        exprDue.map(x => `- ${x.expr}`).join('\n') || '（无）',
-        due.map(e => `- ${e.topic}（${e.subject}）`).join('\n') || '（无）',
-        openWas.map(w => `- ${w.topic}（${w.subject}）`).join('\n') || '（无）',
+        drillTerms.map(x => `- ${x.term}（${statusLabel(x.status)}）`).join('\n') || t('review.none'),
+        exprDue.map(x => `- ${x.expr}`).join('\n') || t('review.none'),
+        due.map(e => `- ${e.topic}（${e.subject}）`).join('\n') || t('review.none'),
+        openWas.map(w => `- ${w.topic}（${w.subject}）`).join('\n') || t('review.none'),
       ].join('\n===\n');
       new OfflineFeedbackModal(this.app, this.plugin, ctx, (fb) => {
         this.pendingFeedback = fb;
@@ -1909,7 +1906,7 @@ export class MainView extends ItemView {
     const bar = parent.createDiv({ cls: 'asc-logbar' });
     bar.createSpan({ text: t('conceptmap.detected', { subject: cm.subject ?? '-', chapter: cm.chapter ?? '-', n: cm.concepts.length }) });
     for (const c of cm.concepts) {
-      bar.createDiv( { text: t('conceptmap.item', { mark: c.status === '已学' ? '✓' : '◌', name: c.name, status: c.status }), cls: 'asc-logrow' });
+      bar.createDiv( { text: t('conceptmap.item', { mark: c.status === '已学' ? '✓' : '◌', name: c.name, status: statusLabel(c.status) }), cls: 'asc-logrow' });
     }
     const btns = bar.createDiv();
     btns.createEl('button', { text: t('conceptmap.register'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
