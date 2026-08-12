@@ -9,10 +9,13 @@ const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;'
 
 function specToSvg(specs: Spec[]): string {
   if (!specs.length) return '';
-  return specs.map(s => {
-    const attrs = Object.entries(s.attrs).map(([k, v]) => ` ${k}="${esc(v)}"`).join('');
-    return s.text !== undefined ? `<${s.tag}${attrs}>${esc(s.text)}</${s.tag}>` : `<${s.tag}${attrs}/>`;
+  const [root, ...children] = specs;
+  const attrs = Object.entries(root.attrs).map(([k, v]) => ` ${k}="${esc(v)}"`).join('');
+  const inner = children.map(s => {
+    const a = Object.entries(s.attrs).map(([k, v]) => ` ${k}="${esc(v)}"`).join('');
+    return s.text !== undefined ? `<${s.tag}${a}>${esc(s.text)}</${s.tag}>` : `<${s.tag}${a}/>`;
   }).join('');
+  return `<${root.tag}${attrs}>${inner}</${root.tag}>`;
 }
 
 /** spec → DOM：createElementNS 保证 SVG 命名空间（innerHTML/DOMParser 导入均不可靠） */
