@@ -8,6 +8,7 @@ import type { ErrorLogService } from './ErrorLogService';
 import type { ProgressService, WeakImpressionService, PracticeFocusService } from './QuestionLogService';
 import type { StatsService } from './StatsService';
 import { ROOT } from './VaultService';
+import { getLang, t } from '../i18n';
 
 const TAG_INSTRUCTION = `
 
@@ -43,7 +44,7 @@ export class PromptAssembler {
     const meta = this.meta(key);
     if (!meta) return null;
 
-    const template = await this.vault.read(`${ROOT}/prompts/${meta.promptFile}`);
+    const template = await this.loadPrompt(meta.promptFile);
     if (!template) return null;
 
     const profile = await this.profileService.load();
@@ -53,6 +54,7 @@ export class PromptAssembler {
     const focuses = await this.practiceFocus.activeForInjection(meta.logName);
 
     const parts: string[] = [template.replace(/\s*$/, '')];
+    parts.push(`\n════════ ${t('prompt.langRule')} ════════\n${t('prompt.langRuleText')}`);
     parts.push('\n════════ 插件注入：学生档案 ════════\n' + this.profileService.formatForInjection(profile));
     parts.push(`今天是 ${todayStr()}。`);
 
@@ -99,8 +101,23 @@ export class PromptAssembler {
   }
 
   private renderUnresolved(entries: ErrorLogEntry[]): string {
-    const header = renderRow(['ID', '科目', '层级', '考点(EN)', '代码', '一句话描述', '复发', '复查日期']);
+    const header = renderRow(['ID', '科目', '层级', '考点(EN)', '代码', '一句话 描述', '复发', '复查日期']);
     const rows = entries.map(e => renderRow([e.id, e.subject, e.level, e.topic, e.code, e.desc, String(e.recurrence), e.reviewDate]));
     return [header, ...rows].join('\n');
+  }
+
+  /** 按语言加载提示词文件：zh 优先 xxx.zh.md，其他语言用 xxx.md（默认英文）；缺失时回退另一套（公开供 MainView 提取开场白） */
+  async loadPromptPublic(file: string): Promise<string> {
+    return this.loadPrompt(file);
+  }
+
+  /** 按语言加载提示词文件：zh 优先 xxx.zh.md，其他语言用 xxx.md（默认英文）；缺失时回退另一套 */
+  private async loadPrompt(file: string): Promise<string> {
+    const zhFile = file.replace(/\.md$/, '.zh.md');
+    const primary = getLang() === 'zh' ? zhFile : file;
+    const fallback = getLang() === 'zh' ? file : zhFile;
+    const c = await this.vault.read(`${ROOT}/prompts/${primary}`);
+    if (c) return c;
+    return (await this.vault.read(`${ROOT}/prompts/${fallback}`)) ?? '';
   }
 }

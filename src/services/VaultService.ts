@@ -2,17 +2,17 @@ import { App, Notice, TFile, TFolder } from 'obsidian';
 
 export const ROOT = 'StudyCoach';
 
-/** 插件模板资源（templates/ 目录在构建时拷入插件文件夹） */
+/** 插件模板资源（templates/ 目录在构建时拷入插件文件夹）；每份提示词含英文默认版与中文 .zh.md 版 */
 const PROMPT_FILES = [
-  'prompt-maths.md',
-  'prompt-physics.md',
-  'prompt-chemistry.md',
-  'prompt-cs.md',
-  'prompt-economics.md',
-  'prompt-drill.md',
-  'prompt-speaking.md',
-  'prompt-ielts.md',
-  'ielts-writing.md',
+  'prompt-maths.md', 'prompt-maths.zh.md',
+  'prompt-physics.md', 'prompt-physics.zh.md',
+  'prompt-chemistry.md', 'prompt-chemistry.zh.md',
+  'prompt-cs.md', 'prompt-cs.zh.md',
+  'prompt-economics.md', 'prompt-economics.zh.md',
+  'prompt-drill.md', 'prompt-drill.zh.md',
+  'prompt-speaking.md', 'prompt-speaking.zh.md',
+  'prompt-ielts.md', 'prompt-ielts.zh.md',
+  'ielts-writing.md', 'ielts-writing.zh.md',
 ];
 
 export const PROFILE_TEMPLATE = `---

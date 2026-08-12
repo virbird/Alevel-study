@@ -1,25 +1,26 @@
 import { App, Modal, Notice, Setting } from 'obsidian';
 import type ALevelStudyCoachPlugin from '../main';
 import { extractJson } from '../llm/LlmClient';
+import { t } from '../i18n';
 import type { OnboardResult } from '../types';
 import { todayStr } from '../utils/date';
 
-const EXTRACT_PROMPT = `你是学习记录工具的录入助手。请把学生的一段自由描述提取为结构化条目，只输出一个合法 JSON：
+const EXTRACT_PROMPT = `You are the intake assistant of a study-recording tool. Extract a student's free-form description into structured entries, output only one valid JSON:
 {
-  "progress": [ {"subject": "科目名", "text": "一句话进展"} ],
-  "errors": [ {"subject": "科目名", "topic": "考点英文名", "code": "失分代码", "desc": "一句话描述", "fix": "正确做法", "specificity": "specific|vague"} ]
+  "progress": [ {"subject": "subject name", "text": "one-sentence progress"} ],
+  "errors": [ {"subject": "subject name", "topic": "English topic name", "code": "losing code", "desc": "one-sentence description", "fix": "correct approach", "specificity": "specific|vague"} ]
 }
-规则：
-1. 只提取学生明确说到的信息，不猜测不编造；无法确定的不放进任何数组。
-2. progress 是他说的"学到哪了 / 最近在学什么"；errors 是他说的"老错 / 老丢分 / 不会"的地方。
-3. subject 用：Maths / Physics / Chem / CS / Econ。
-4. code 从下面选一个：M,A,U,S,D,P,H,G,T,E,C,R,K,X,Z,DV,CL,LK；CS 另有 L,V,N,B,Q,O；Chem 另有 F,W,J,Y,I；Econ 另有 CR,EV,DG,CX,DF,CF。不确定就填空字符串。
-5. errors 的 topic 用英文考点名，不确定就填空字符串。
-6. 【重要】每条 error 必须判断 specificity，三选一：
-   - specific：做了具体某道题、犯了具体的错（哪步错、算错、漏条件），能指出具体错误行为，进失分记录本；
-   - practice：对某类题型或作答习惯的倾向描述（如"实验题成功率不高""问答题容易口语化""这个考点需要更多练习"），
-     即使提到了考点名，只要描述的是成功率/习惯/倾向而非具体某次错误，就是 practice；
-   - impression：对某科或某个大章节的模糊感觉（如"力学比较弱""化学感觉不行"），完全说不出考点。`;
+Rules:
+1. Only extract what the student explicitly said — no guessing, no fabrication; anything uncertain goes into no array.
+2. progress is what they said about "where they are / what they are studying"; errors is where they said "always wrong / always losing marks / can't do".
+3. subject uses one of: Maths / Physics / Chem / CS / Econ.
+4. code from: M,A,U,S,D,P,H,G,T,E,C,R,K,X,Z,DV,CL,LK; CS also L,V,N,B,Q,O; Chem also F,W,J,Y,I; Econ also CR,EV,DG,CX,DF,CF. Empty string if unsure.
+5. errors.topic uses the English topic name; empty string if unsure.
+6. 【Important】judge specificity for every error, choose one of three:
+   - specific: did a specific problem, made a specific mistake (which step, miscalculation, missed condition), can point to the concrete wrong behavior → goes to the error log;
+   - practice: a tendency about a question type or answering habit (e.g. "experiment questions rarely succeed" "short-answer questions tend to be colloquial" "this topic needs more practice"),
+     even if a topic name is mentioned — as long as it describes success rate/habit/tendency rather than one concrete error, it is practice;
+   - impression: a vague feeling about a subject or a big chapter (e.g. "mechanics is weak" "chemistry feels off"), cannot name any topic.`;
 
 /**
  * 冷启动引导：用自己的话描述现状 → AI 提取 → 逐条确认入库。
@@ -33,13 +34,13 @@ export class OnboardModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.addClass('asc-modal');
-    contentEl.createEl('h2', { text: '冷启动：记录你的当前学习状况' });
+    contentEl.createEl('h2', { text: t('onboard.title') });
     contentEl.createEl('p', {
-      text: '用你自己的话说说：各科学到哪了？最近哪些地方老丢分？不用一次说全，想到什么写什么，之后随时可以用「随手记」补充。',
+      text: t('onboard.desc'),
     });
 
     const input = contentEl.createEl('textarea', {
-      attr: { placeholder: '例：数学 AS 学到 differentiation 了，物理上周考试受力分解又错了，化学方程式配平感觉还行……', rows: '6' },
+      attr: { placeholder: t('onboard.placeholder'), rows: '6' },
     });
 
     const resultEl = contentEl.createDiv();
@@ -47,13 +48,13 @@ export class OnboardModal extends Modal {
 
     new Setting(contentEl).addButton(b =>
       b
-        .setButtonText('AI 提取')
+        .setButtonText(t('onboard.extract'))
         .setCta()
         .onClick(async () => {
           const text = input.value.trim();
-          if (!text) return new Notice('先写点什么再提取');
-          if (!this.plugin.llm.configured) return new Notice('请先在设置里配置 LLM（接口 / Key / 模型）');
-          b.setButtonText('提取中…').setDisabled(true);
+          if (!text) return new Notice(t('onboard.empty'));
+          if (!this.plugin.llm.configured) return new Notice(t('onboard.needLlm'));
+          b.setButtonText(t('onboard.extracting')).setDisabled(true);
           resultEl.empty();
           try {
             const reply = await this.plugin.llm.chat({
@@ -63,14 +64,14 @@ export class OnboardModal extends Modal {
             });
             candidates = extractJson<OnboardResult>(reply);
             if (!candidates || (!candidates.progress?.length && !candidates.errors?.length)) {
-              resultEl.createEl('p', { text: '没有提取到可入库的信息。可以说得更具体一点，或直接关闭此窗口。' });
+              resultEl.createEl('p', { text: t('onboard.none') });
               return;
             }
             this.renderCandidates(resultEl, candidates, input.value.trim());
           } catch (e) {
-            new Notice(`提取失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+            new Notice(t('onboard.fail', { msg: e instanceof Error ? e.message : String(e) }), 8000);
           } finally {
-            b.setButtonText('AI 提取').setDisabled(false);
+            b.setButtonText(t('onboard.extract')).setDisabled(false);
           }
         }),
     );
@@ -81,7 +82,7 @@ export class OnboardModal extends Modal {
     const checks: { box: HTMLInputElement; kind: 'progress' | 'error' | 'impression' | 'practice'; idx: number }[] = [];
 
     if (c.progress?.length) {
-      el.createEl('h4', { text: `学习进展（${c.progress.length} 条，写入 记录/进展/）` });
+      el.createEl('h4', { text: t('onboard.progress', { n: c.progress.length }) });
       c.progress.forEach((p, i) => {
         const row = el.createDiv({ cls: 'asc-candidate' });
         const box = row.createEl('input', { type: 'checkbox' });
@@ -95,32 +96,32 @@ export class OnboardModal extends Modal {
       const practice = c.errors.filter(e => e.specificity === 'practice');
       const vague = c.errors.filter(e => e.specificity === 'impression' || (!e.specificity && !e.topic && !e.desc));
       if (specific.length) {
-        el.createEl('h4', { text: `具体失分点（${specific.length} 条，写入 error log，复查默认 7 天后）` });
+        el.createEl('h4', { text: t('onboard.specific', { n: specific.length }) });
         specific.forEach(e => {
           const row = el.createDiv({ cls: 'asc-candidate' });
           const box = row.createEl('input', { type: 'checkbox' });
           box.checked = true;
-          row.createSpan({ text: `【${e.subject ?? '?'}】${e.topic || '(考点待定)'} · ${e.code || '(代码待定)'} · ${e.desc ?? ''}` });
+          row.createSpan({ text: `【${e.subject ?? '?'}】${e.topic || t('capture.topicPending')} · ${e.code || t('capture.codePending')} · ${e.desc ?? ''}` });
           checks.push({ box, kind: 'error', idx: c.errors.indexOf(e) });
         });
       }
       if (practice.length) {
-        el.createEl('h4', { text: `题型/习惯倾向（${practice.length} 条，写入练习侧重，遇到对应题型时教练会加强审查）` });
+        el.createEl('h4', { text: t('onboard.practice', { n: practice.length }) });
         practice.forEach(e => {
           const row = el.createDiv({ cls: 'asc-candidate' });
           const box = row.createEl('input', { type: 'checkbox' });
           box.checked = true;
-          row.createSpan({ text: `【${e.subject ?? '?'}】${e.desc || e.topic || '(无描述)'}` });
+          row.createSpan({ text: `【${e.subject ?? '?'}】${e.desc || e.topic || t('onboard.noDesc')}` });
           checks.push({ box, kind: 'practice', idx: c.errors.indexOf(e) });
         });
       }
       if (vague.length) {
-        el.createEl('h4', { text: `模糊弱点印象（${vague.length} 条，写入弱点印象清单，待后续具体错题验证）` });
+        el.createEl('h4', { text: t('onboard.vague', { n: vague.length }) });
         vague.forEach(e => {
           const row = el.createDiv({ cls: 'asc-candidate' });
           const box = row.createEl('input', { type: 'checkbox' });
           box.checked = true;
-          row.createSpan({ text: `【${e.subject ?? '?'}】${e.desc || '(无描述)'}` });
+          row.createSpan({ text: `【${e.subject ?? '?'}】${e.desc || t('onboard.noDesc')}` });
           checks.push({ box, kind: 'impression', idx: c.errors.indexOf(e) });
         });
       }
@@ -129,7 +130,7 @@ export class OnboardModal extends Modal {
     new Setting(el)
       .addButton(b =>
         b
-          .setButtonText('收入选中')
+          .setButtonText(t('onboard.keepSelected'))
           .setCta()
           .onClick(async () => {
             b.setDisabled(true);
@@ -158,7 +159,7 @@ export class OnboardModal extends Modal {
                   if (!e.topic && !e.desc) continue;
                   await this.plugin.errorLog.addEntry({
                     subject: e.subject ?? '',
-                    topic: e.topic ?? '(待补充)',
+                    topic: e.topic ?? t('capture.topicFill'),
                     code: e.code || 'K',
                     desc: e.desc ?? '',
                     fix: e.fix ?? '',
@@ -168,16 +169,16 @@ export class OnboardModal extends Modal {
               }
               // 原文也留一份，允许模糊、拒绝空白
               await this.plugin.vaultService.append('StudyCoach/记录/学习日志.md', `\n## ${date} 冷启动记录\n\n${source}\n`);
-              new Notice(`已收录 ${saved} 条。之后随时用「随手记」补充。`);
+              new Notice(t('onboard.saved', { n: saved }));
               this.close();
               void this.plugin.refreshStatusBar();
             } catch (err) {
-              new Notice(`入库失败：${err instanceof Error ? err.message : String(err)}`, 8000);
+              new Notice(t('onboard.saveFail', { msg: err instanceof Error ? err.message : String(err) }), 8000);
               b.setDisabled(false);
             }
           }),
       )
-      .addButton(b => b.setButtonText('全部丢弃').onClick(() => this.close()));
+      .addButton(b => b.setButtonText(t('onboard.discardAll')).onClick(() => this.close()));
   }
 
   onClose(): void {

@@ -1,4 +1,5 @@
 import { App, Modal, Setting } from 'obsidian';
+import { t } from '../i18n';
 
 /**
  * 单行输入弹窗（替代 window.prompt，符合 Obsidian UI 规范）。
@@ -17,7 +18,7 @@ export class PromptModal extends Modal {
     new Setting(contentEl)
       .addButton(b =>
         b
-          .setButtonText('确认')
+          .setButtonText(t('modal.prompt.confirm'))
           .setCta()
           .onClick(() => {
             const v = input.value.trim();
@@ -25,7 +26,7 @@ export class PromptModal extends Modal {
             this.onSubmit(v);
           }),
       )
-      .addButton(b => b.setButtonText('取消').onClick(() => this.close()));
+      .addButton(b => b.setButtonText(t('common.cancel')).onClick(() => this.close()));
     input.addEventListener('keydown', e => {
       if (e.key === 'Enter') {
         const v = input.value.trim();

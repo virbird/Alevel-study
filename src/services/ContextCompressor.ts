@@ -1,14 +1,15 @@
 import type { LlmClient } from '../llm/LlmClient';
 import type { ChatMessage } from '../types';
 import { estimateTokens } from '../utils/tokens';
+import { t } from '../i18n';
 
 const SUMMARY_SYSTEM =
-  '你是对话压缩器。把对话压缩为简洁摘要，保留：讨论过的主题、题目与考点、关键结论与决定、' +
-  '后续提问需要的上下文（如作文内容要点、已达成的批改意见）。用与对话相同的语言输出，简洁但完整。';
+  'You are a conversation compressor. Compress the conversation into a concise summary, keeping: the topics discussed, questions and exam topics, key conclusions and decisions, ' +
+  'and the context needed for later questions (e.g. essay content points, grading opinions already agreed). Output in the same language as the conversation, concise but complete.';
 
 const SUMMARY_PROMPT =
-  '请总结以上对话。聚焦：1) 讨论的主题与题目 2) 关键结论与决定 3) 后续提问需要的重要上下文。' +
-  '输出结构化 markdown 摘要。';
+  'Summarize the conversation above. Focus on: 1) topics and questions discussed 2) key conclusions and decisions 3) important context needed for later questions. ' +
+  'Output a structured markdown summary.';
 
 export interface CompressResult {
   messages: ChatMessage[];
@@ -37,7 +38,7 @@ export class ContextCompressor {
 
     const history = toCompress
       .filter(m => m.content.trim())
-      .map(m => `${m.role === 'user' ? '学生' : '教练'}：${m.content}`)
+      .map(m => `${m.role === 'user' ? t('role.student') : t('role.coach')}：${m.content}`)
       .join('\n\n');
 
     const summary = await llm.chat({

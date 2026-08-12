@@ -1,5 +1,6 @@
 import { ItemView, MarkdownRenderer, Notice, Platform, TFile, WorkspaceLeaf } from 'obsidian';
 import type ALevelStudyCoachPlugin from '../main';
+import { t } from '../i18n';
 import { SUBJECTS } from '../types';
 import type { ChatMessage, ErrorLogEntry, ModeKey, SessionTag } from '../types';
 import { extractJson } from '../llm/LlmClient';
@@ -32,7 +33,7 @@ const SUBJECT_TO_MODE: Record<string, ModeKey> = {
   CS: 'CS', Econ: 'Economics', Economics: 'Economics',
 };
 
-const CLOSE_PROMPT = '现在结题。请按提示词完成结题流程的剩余环节（包括 log 行），并在回复末尾输出会话标签 JSON。';
+const CLOSE_PROMPT = 'Close the problem now. Complete the remaining steps of the closing flow per the prompt (including the log line), and output the session-tag JSON at the end of the reply.';
 
 type TabKey = 'home' | 'coach' | 'records' | 'review' | 'ielts';
 
@@ -179,33 +180,33 @@ export class MainView extends ItemView {
     const gModels = this.plugin.modelList();
     const gCur = this.plugin.settings.llm.model;
     const gDef = this.plugin.currentModelDefault();
-    if (!gModels.length) gSel.createEl('option', { text: gCur || '未配置', value: gCur });
+    if (!gModels.length) gSel.createEl('option', { text: gCur || t('common.notConfigured'), value: gCur });
     for (const m of gModels) {
       gSel.createEl('option', { text: m === gDef ? `${m} ★` : m, value: m });
     }
     gSel.value = gCur;
-    gSel.setAttr('title', `全局模型：影响教练/批改/抽查等所有 AI 调用。当前：${gCur}${gDef ? `，默认：${gDef}` : ''}`);
+    gSel.setAttr('title', t('home.model.title', { cur: gCur, def: gDef ? t('home.model.default', { def: gDef }) : '' }));
     gSel.addEventListener('change', () => {
       void (async () => {
         this.plugin.settings.llm.model = gSel.value;
         await this.plugin.saveSettings();
-        new Notice(`模型已切换：${gSel.value}`);
+        new Notice(t('coach.modelSwitched', { model: gSel.value }));
         this.render();
       })();
     });
-    header.createSpan({ text: '🎓 A-Level Study Coach', cls: 'asc-title' });
+    header.createSpan({ text: t('home.title'), cls: 'asc-title' });
     const actions = header.createDiv({ cls: 'asc-header-actions' });
-    actions.createEl('button', { text: '随手记', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => new CaptureModal(this.app, this.plugin).open());
-    actions.createEl('button', { text: '冷启动', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => new OnboardModal(this.app, this.plugin).open());
-    actions.createEl('button', { text: '刷新', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => this.render());
+    actions.createEl('button', { text: t('home.capture'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => new CaptureModal(this.app, this.plugin).open());
+    actions.createEl('button', { text: t('home.onboard'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => new OnboardModal(this.app, this.plugin).open());
+    actions.createEl('button', { text: t('common.refresh'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => this.render());
 
     // 页签
     const tabs = root.createDiv({ cls: 'asc-tabs' });
     const defs: { key: TabKey; label: string }[] = [
-      { key: 'home', label: '首页' },
-      { key: 'coach', label: '教练' },
-      { key: 'records', label: '记录' },
-      { key: 'review', label: '复习' },
+      { key: 'home', label: t('home.tab.home') },
+      { key: 'coach', label: t('home.tab.coach') },
+      { key: 'records', label: t('home.tab.records') },
+      { key: 'review', label: t('home.tab.review') },
     ];
     for (const d of defs) {
       const btn = tabs.createEl('button', { text: d.label, cls: 'asc-tab' + (this.tab === d.key ? ' is-active' : '') });
@@ -248,11 +249,11 @@ export class MainView extends ItemView {
         card.createDiv( { text: s.title, cls: 'asc-card-title' });
         card.createDiv( { text: `${s.kind} · ${s.created}`, cls: 'asc-muted' });
         const btns = card.createDiv({ cls: 'asc-row' });
-        btns.createEl('button', { text: '看建议', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => {
+        btns.createEl('button', { text: t('home.seeSuggest'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => {
           new SuggestionModal(this.app, this.plugin, s, () => this.render()).open();
         });
-        btns.createEl('button', { text: '不准确', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
-          new PromptModal(this.app, '哪里判断得不准确？', '', note => {
+        btns.createEl('button', { text: t('home.inaccurate'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+          new PromptModal(this.app, t('home.inaccurate'), '', note => {
             void (async () => {
               await this.plugin.suggestions.setStatus(s.file, '不准确', note || undefined);
               this.render();
@@ -260,9 +261,9 @@ export class MainView extends ItemView {
           }).open();
         });
       }
-      if (pending.length > 3) el.createDiv( { text: `… 还有 ${pending.length - 3} 张待处理建议卡片`, cls: 'asc-muted' });
+      if (pending.length > 3) el.createDiv( { text: t('home.moreSuggest', { n: pending.length - 3 }), cls: 'asc-muted' });
     } else {
-      el.createDiv({ text: '暂无待处理的建议卡片——弱点信号达到阈值时会自动出现在这里。', cls: 'asc-hint' });
+      el.createDiv({ text: t('home.noSuggest'), cls: 'asc-hint' });
     }
 
     // 2. 待复查入口（有才显示，一行）
@@ -270,10 +271,10 @@ export class MainView extends ItemView {
     if (radar.dueCount > 0) {
       const dueCard = el.createDiv({ cls: 'asc-card asc-due-card' });
       const dueRow = dueCard.createDiv({ cls: 'asc-row' });
-      dueRow.createSpan({ text: `📌 ${radar.dueCount} 条失分点待复查`, cls: 'asc-strong' });
-      dueRow.createEl('button', { text: '去处理', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => { this.tab = 'review'; this.render(); });
+      dueRow.createSpan({ text: t('home.due', { n: radar.dueCount }), cls: 'asc-strong' });
+      dueRow.createEl('button', { text: t('home.goReview'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => { this.tab = 'review'; this.render(); });
     } else if (!pending.length) {
-      el.createDiv( { text: '✓ 今天没有待办——主学习在线下，需要协助时随时来。', cls: 'asc-hint' });
+      el.createDiv({ text: t('home.noTodo'), cls: 'asc-hint' });
     }
 
     // 3. 状态概览（一张紧凑卡片，每域一行；详细数据去「记录」页签）
@@ -282,17 +283,23 @@ export class MainView extends ItemView {
     const exprs = await this.plugin.expressions.load();
     const dueExprs = await this.plugin.expressions.due();
     const ov = el.createDiv({ cls: 'asc-card' });
-    ov.createDiv( { text: '状态概览', cls: 'asc-card-title' });
+    ov.createDiv( { text: t('home.overview'), cls: 'asc-card-title' });
     if (scores.length) {
       const latest = scores[scores.length - 1];
       const gap = latest.overall !== null ? profile.ielts.target - latest.overall : null;
       const weak = this.plugin.ielts.weakestDimension(latest);
-      ov.createDiv( {
-        text: `📝 雅思 最近 ${latest.overall ?? '-'}${gap !== null && gap > 0 ? ` · 距目标差 ${gap.toFixed(1)}` : gap !== null ? ' · 达标 🎉' : ''}${weak ? ` · 短板 ${weak}` : ''} · 表达库 ${exprs.length}${dueExprs.length ? `（到期 ${dueExprs.length}）` : ''}`,
+      ov.createDiv({
+        text: t('home.ielts', {
+          overall: latest.overall ?? '-',
+          gap: gap !== null && gap > 0 ? t('home.ielts.gap', { gap: gap.toFixed(1) }) : gap !== null ? t('home.ielts.targetMet') : '',
+          weak: weak ? t('home.ielts.weak', { dim: weak }) : '',
+          exprs: exprs.length,
+          due: dueExprs.length ? t('home.ielts.due', { n: dueExprs.length }) : '',
+        }),
         cls: 'asc-row',
       });
     } else {
-      ov.createDiv( { text: `📝 雅思 目标 ${profile.ielts.target}（${profile.ielts.focus}）· 还没有批改记录`, cls: 'asc-row' });
+      ov.createDiv({ text: t('home.ielts.noRecord', { target: profile.ielts.target, focus: profile.ielts.focus }), cls: 'asc-row' });
     }
     const curCodes = this.plugin.engine.codeCountsRange(entries, -1, 14);
     const prevCodes = this.plugin.engine.codeCountsRange(entries, 14, 28);
@@ -304,23 +311,27 @@ export class MainView extends ItemView {
     }).join(' · ');
     const relapse = entries.filter(e => e.recurrence >= 2 && e.status !== '已消除')
       .sort((a, b) => b.recurrence - a.recurrence).slice(0, 2);
-    ov.createDiv( {
-      text: `🎯 弱点 未消除 ${radar.unresolvedCount} · 表达码 ${exprTrend}${relapse.length ? ` · 复发：${relapse.map(e => `${e.topic}×${e.recurrence}`).join('、')}` : ''}`,
+    ov.createDiv({
+      text: t('home.weak', {
+        n: radar.unresolvedCount,
+        trend: exprTrend,
+        relapse: relapse.length ? t('home.weak.relapse', { list: relapse.map(e => `${e.topic}×${e.recurrence}`).join('、') }) : '',
+      }),
       cls: 'asc-row',
     });
-    const unstable = terms.filter(t => t.status !== '已稳定').length;
-    ov.createDiv( { text: `📚 术语 待抽查 ${unstable} · 已稳定 ${terms.filter(t => t.status === '已稳定').length} · 共 ${terms.length}`, cls: 'asc-row' });
-    ov.createDiv( { text: `🎓 ${profile.stage} · 目标全 A* · 牛剑方向 ${profile.oxbridge.direction}`, cls: 'asc-row asc-muted' });
+    const unstable = terms.filter(x => x.status !== '已稳定').length;
+    ov.createDiv({ text: t('home.terms', { n: unstable, stable: terms.filter(x => x.status === '已稳定').length, total: terms.length }), cls: 'asc-row' });
+    ov.createDiv({ text: t('home.profile', { stage: profile.stage, dir: profile.oxbridge.direction }), cls: 'asc-row asc-muted' });
 
     // 4. 动作（一排小按钮，只留教练会话覆盖不了的独立功能；
     // 求助去「教练」页签，批改作文用命令面板「雅思：批改当前作文」）
     const actionsRow = el.createDiv({ cls: 'asc-row asc-home-actions' });
-    actionsRow.createEl('button', { text: `🗣 表达抽查${dueExprs.length ? `（${dueExprs.length}）` : ''}`, cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.plugin.startExpressionDrill());
-    actionsRow.createEl('button', { text: '📚 术语抽查', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.startDrill());
-    actionsRow.createEl('button', { text: '📊 周报', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.plugin.exportWeeklyReport());
+    actionsRow.createEl('button', { text: t('home.exprDrill', { n: dueExprs.length ? `（${dueExprs.length}）` : '' }), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.plugin.startExpressionDrill());
+    actionsRow.createEl('button', { text: t('home.termDrill'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.startDrill());
+    actionsRow.createEl('button', { text: t('home.weekly'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => void this.plugin.exportWeeklyReport());
     if (profile.oxbridge.enabled) {
-      const ox = actionsRow.createEl('button', { text: '🧠 思维题', cls: 'asc-btn asc-btn-small' });
-      ox.setAttr('title', oxbridgeGuidance(profile.stage, profile.oxbridge.direction));
+      const ox = actionsRow.createEl('button', { text: t('home.oxbridge'), cls: 'asc-btn asc-btn-small' });
+      ox.setAttr('title', t('home.oxbridge.title', { guidance: oxbridgeGuidance(profile.stage, profile.oxbridge.direction) }));
       ox.addEventListener('click', () => void this.startOxbridgeSession());
     }
   }
@@ -328,13 +339,13 @@ export class MainView extends ItemView {
   /** 术语抽查：未稳定+观察中抽 3 条 + 已稳定随机回抽 1 条（防假性掌握） */
   private async startDrill(): Promise<void> {
     if (!this.plugin.llm.configured) {
-      new Notice('请先在设置里配置 LLM');
+      new Notice(t('coach.notConfigured'));
       return;
     }
     const all = await this.plugin.terms.load();
     const pool = all.filter(t => t.status !== '已稳定');
     if (!pool.length) {
-      new Notice('术语清单为空——先在学习中添加术语（随手记或教练结题）');
+      new Notice(t('review.drill.none'));
       return;
     }
     const sampled = shuffle(pool).slice(0, 3);
@@ -356,11 +367,11 @@ export class MainView extends ItemView {
     if (task.status === 'running') {
       card.scrollIntoView({ block: 'nearest' });
       const label = card.createDiv( { cls: 'asc-card-title' });
-      const setText = () => label.setText(`🕐 正在批改：${task.basename} · 已等待 ${this.plugin.gradingTask?.elapsed ?? 0} 秒（含图片通常 1–4 分钟）——可以先切走干别的，回来看结果`);
+      const setText = () => label.setText(t('grading.running', { name: task.basename, secs: this.plugin.gradingTask?.elapsed ?? 0 }));
       setText();
       card.createDiv({ cls: 'asc-progress' }).createDiv({ cls: 'asc-progress-bar' });
       card.createDiv({ cls: 'asc-row' })
-        .createEl('button', { text: '取消批改', cls: 'asc-btn asc-btn-small' })
+        .createEl('button', { text: t('coach.cancelGrading'), cls: 'asc-btn asc-btn-small' })
         .addEventListener('click', () => this.plugin.cancelGrading());
       this.taskTicker = window.setInterval(() => {
         if (this.plugin.gradingTask?.status === 'running') setText();
@@ -368,13 +379,13 @@ export class MainView extends ItemView {
       }, 1000);
     } else {
       const icon = { success: '✅', cancelled: '⏹', timeout: '⏱', failed: '❌' }[task.status];
-      card.createDiv( { text: `${icon} 批改${task.status === 'success' ? '成功' : task.status === 'cancelled' ? '已取消' : task.status === 'timeout' ? '超时' : '失败'}：${task.basename}`, cls: 'asc-card-title' });
+      card.createDiv( { text: `${icon} ${t('grading.done', { status: task.status === 'success' ? 'succeeded' : task.status === 'cancelled' ? 'cancelled' : task.status === 'timeout' ? 'timeout' : 'failed', name: task.basename })}`, cls: 'asc-card-title' });
       card.createDiv( { text: task.message, cls: 'asc-row asc-muted' });
       const btns = card.createDiv({ cls: 'asc-row' });
       if (task.status === 'success') {
-        btns.createEl('button', { text: '打开批改后的笔记', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => this.openFile(task.path));
+        btns.createEl('button', { text: t('grading.open'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => this.openFile(task.path));
       }
-      btns.createEl('button', { text: '关闭', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+      btns.createEl('button', { text: t('common.close'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
         this.plugin.gradingTask = null;
         this.render();
       });
@@ -413,8 +424,8 @@ export class MainView extends ItemView {
 
     // 会话生命周期按钮：会话始终自动存在，按钮只剩「结题」
     if (this.systemPrompt) {
-      const sessionBtn = bar.createEl('button', { text: '✓ 结题', cls: 'asc-btn' });
-      sessionBtn.setAttr('title', '结束当前题：走结题流程（自评/审查/log 行/会话打标），完成后自动开新会话');
+      const sessionBtn = bar.createEl('button', { text: t('coach.closeSession'), cls: 'asc-btn' });
+      sessionBtn.setAttr('title', t('coach.closeSession.title'));
       sessionBtn.addEventListener('click', () => {
         this.pendingClose = true; // 结题回复完成后自动存档并关闭会话
         void this.send(CLOSE_PROMPT);
@@ -426,28 +437,28 @@ export class MainView extends ItemView {
       b.setAttr('title', title);
       b.addEventListener('click', onClick);
     };
-    textBtn('存档', '把当前会话存档到笔记', () => void this.archiveIfNeeded(true));
-    textBtn('历史', '加载历史会话继续聊', () => this.openHistory());
-    textBtn('文档', '引用文档（全会话上下文）', () => this.openAttachPicker());
-    textBtn('计时', this.systemPrompt ? '独立思考计时（到时间才允许求助）' : '独立思考计时（先开会话）', () => void this.startTimer());
+    textBtn(t('coach.archive'), t('coach.archive.title'), () => void this.archiveIfNeeded(true));
+    textBtn(t('coach.history'), t('coach.history.title'), () => this.openHistory());
+    textBtn(t('coach.attach'), t('coach.attach.title'), () => this.openAttachPicker());
+    textBtn(t('coach.timer'), this.systemPrompt ? t('coach.timer.title') : t('coach.timer.title.noSession'), () => void this.startTimer());
 
     if (this.timerDeadline > Date.now()) {
       const cd = el.createDiv({ cls: 'asc-timer' });
-      cd.setText(`⏱ 独立思考中，距求助门槛还有 ${fmtRemain(this.timerDeadline - Date.now())}——卡住本身就是训练内容`);
+      cd.setText(t('coach.timer.countdown', { remain: fmtRemain(this.timerDeadline - Date.now()) }));
       if (this.timerInterval === null) {
         this.timerInterval = window.setInterval(() => {
           if (this.timerDeadline <= Date.now()) {
             if (this.timerInterval !== null) { window.clearInterval(this.timerInterval); this.timerInterval = null; }
             this.thinkCredit = this.timerMinutes;
-            new Notice(`⏱ ${this.timerMinutes} 分钟独立思考完成，下一条消息会带上思考凭证`);
+            new Notice(t('coach.timer.done', { min: this.timerMinutes }));
             this.render();
           } else {
-            cd.setText(`⏱ 独立思考中，距求助门槛还有 ${fmtRemain(this.timerDeadline - Date.now())}——卡住本身就是训练内容`);
+            cd.setText(t('coach.timer.countdown', { remain: fmtRemain(this.timerDeadline - Date.now()) }));
           }
         }, 1000);
       }
     } else if (this.thinkCredit > 0) {
-      el.createDiv({ cls: 'asc-timer' }).setText(`✓ 已完成 ${this.thinkCredit} 分钟独立思考，下一条消息会自动标注给教练`);
+      el.createDiv({ cls: 'asc-timer' }).setText(t('coach.timer.creditDone', { min: this.thinkCredit }));
     }
 
     if (this.attachments.length) {
@@ -462,12 +473,12 @@ export class MainView extends ItemView {
     }
 
     if (this.sessionSummary) {
-      el.createDiv({ text: `已注入：${this.sessionSummary}`, cls: 'asc-summary' });
+      el.createDiv({ text: `${t('coach.injected')}：${this.sessionSummary}`, cls: 'asc-summary' });
     }
 
     const chatEl = el.createDiv({ cls: 'asc-chat' });
     if (this.messages.length === 0) {
-      chatEl.createDiv({ text: this.systemPrompt ? '会话已开始，把题目或问题发过来。' : '正在开启会话…', cls: 'asc-empty' });
+      chatEl.createDiv({ text: this.systemPrompt ? t('coach.sessionStarted') : t('coach.sessionStarting'), cls: 'asc-empty' });
     }
     this.renderScope.reset();
     for (const m of this.messages) {
@@ -500,11 +511,11 @@ export class MainView extends ItemView {
 
     // IM 风格发送框：textarea 占满，底栏左侧图标 + 快捷键提示 + 右侧发送
     const inputBar = el.createDiv({ cls: 'asc-input-bar' });
-    const input = inputBar.createEl('textarea', { attr: { rows: '2', placeholder: this.systemPrompt ? '把题目原文发过来……' : '正在开启会话…' } });
+    const input = inputBar.createEl('textarea', { attr: { rows: '2', placeholder: this.systemPrompt ? t('coach.input.placeholder') : t('coach.input.placeholder.wait') } });
     const actions = inputBar.createDiv({ cls: 'asc-input-actions' });
     // 附加图片（随下一条消息发送）
     const imgBtn = actions.createEl('button', { text: '🖼', cls: 'asc-btn asc-btn-icon' });
-    imgBtn.setAttr('title', '附加图片（随下一条消息发送，可多选）');
+    imgBtn.setAttr('title', t('coach.img.title'));
     imgBtn.addEventListener('click', () =>
       new ImagePickerModal(this.app, this.pendingImages, f => {
         this.pendingImages.push(f.path);
@@ -513,17 +524,17 @@ export class MainView extends ItemView {
     );
     // 口语 + 语音：TTS 播报中显示停止按钮（🎤 按钮在快捷键提示后创建，复用 hintEl 显示状态）
     if (this.mode === 'speaking' && this.ttsPlaying) {
-      const stopBtn = actions.createEl('button', { text: '⏹ 停止播报', cls: 'asc-btn asc-btn-small' });
+      const stopBtn = actions.createEl('button', { text: t('coach.stopTts'), cls: 'asc-btn asc-btn-small' });
       stopBtn.addEventListener('click', () => this.stopTts());
     }
     const isMac = Platform.isMacOS;
-    const hintEl = actions.createSpan({ text: `${isMac ? '⌘' : 'Ctrl'}↩ 发送`, cls: 'asc-input-hint' });
+    const hintEl = actions.createSpan({ text: `${isMac ? '⌘' : 'Ctrl'}${t('coach.send.hint')}`, cls: 'asc-input-hint' });
     const HINT_DEFAULT = hintEl.getText();
     // 口语 + 语音：🎤 按住说话（松开识别并自动发送）
     if (this.mode === 'speaking') {
       const micBtn = actions.createEl('button', { text: '🎤', cls: 'asc-btn asc-btn-icon' });
       const ready = await this.plugin.voiceReady();
-      micBtn.setAttr('title', ready ? '按住说话，松开识别并发送' : '语音未配置：设置 → 语音训练（当前为文字模式）');
+      micBtn.setAttr('title', ready ? t('coach.mic.title') : t('coach.mic.title.notReady'));
       micBtn.disabled = !ready || this.busy;
       micBtn.addEventListener('pointerdown', e => {
         e.preventDefault();
@@ -536,11 +547,11 @@ export class MainView extends ItemView {
             this.recorder = rec;
             this.recording = true;
             micBtn.setText('⏺');
-            hintEl.setText('🎤 录音中…松开发送');
+            hintEl.setText(t('coach.mic.recording'));
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             void this.voiceLog('ERROR', '录音启动', msg);
-            new Notice(`录音启动失败：${msg}（请检查麦克风权限）`, 8000);
+            new Notice(t('coach.voice.startFail', { msg }), 8000);
           }
         })();
       });
@@ -550,7 +561,7 @@ export class MainView extends ItemView {
         const rec = this.recorder;
         this.recorder = null;
         micBtn.setText('🎤');
-        hintEl.setText('识别中…');
+        hintEl.setText(t('coach.mic.recognizing'));
         void (async () => {
           try {
             const vcfg = await this.plugin.loadVoiceConfig();
@@ -560,7 +571,7 @@ export class MainView extends ItemView {
             if (res.seconds < 0.5) {
               hintEl.setText(HINT_DEFAULT);
               void this.voiceLog('WARN', '录音过短', `${res.seconds.toFixed(2)} 秒，已拦截`);
-              new Notice('录音太短，请按住说话后再松开');
+              new Notice(t('coach.voice.tooShort'));
               return;
             }
             const token = await this.plugin.getNlsToken();
@@ -571,7 +582,7 @@ export class MainView extends ItemView {
             hintEl.setText(HINT_DEFAULT);
             if (!text.trim()) {
               void this.voiceLog('WARN', '识别为空', `音频 ${res.seconds.toFixed(1)} 秒但无识别结果（检查麦克风音量/环境）`);
-              new Notice('未识别到内容，请再试一次');
+              new Notice(t('coach.voice.empty'));
               return;
             }
             void this.voiceLog('INFO', '识别成功', `${text.length} 字`);
@@ -581,21 +592,21 @@ export class MainView extends ItemView {
             hintEl.setText(HINT_DEFAULT);
             const msg = err instanceof Error ? err.message : String(err);
             void this.voiceLog('ERROR', '语音失败', msg);
-            new Notice(`语音失败：${msg}（详见 雅思/口语/语音日志.md）`, 8000);
+            new Notice(t('coach.voice.fail', { msg }), 8000);
           }
         })();
       };
       micBtn.addEventListener('pointerup', stopVoice);
       micBtn.addEventListener('pointerleave', stopVoice);
     }
-    const sendBtn = actions.createEl('button', { text: this.busy ? '回复中…' : '发送', cls: 'asc-btn asc-btn-cta' });
+    const sendBtn = actions.createEl('button', { text: this.busy ? t('coach.send.replying') : t('coach.send'), cls: 'asc-btn asc-btn-cta' });
     sendBtn.disabled = this.busy || !this.systemPrompt || this.timerDeadline > Date.now();
     const doSend = () => {
       this.unlockAudio(); // iOS：手势内解锁 AudioContext，保证考官回复可播报
       const text = input.value.trim();
       if (!text || this.busy || !this.systemPrompt) return;
       if (this.timerDeadline > Date.now()) {
-        new Notice(`⏱ 还没到求助时间（剩 ${fmtRemain(this.timerDeadline - Date.now())}）`);
+        new Notice(t('coach.timer.notYet', { remain: fmtRemain(this.timerDeadline - Date.now()) }));
         return;
       }
       input.value = '';
@@ -614,16 +625,16 @@ export class MainView extends ItemView {
     const over = ctx > limit;
     const pct = win > 0 ? Math.round((ctx / win) * 100) : 0;
     const ctxEl = ctxRow.createSpan({
-      text: `已用上下文 ${formatTokens(ctx)} / ${formatTokens(win)}（${pct}%）${over ? ' ⚠ 已超压缩阈值' : ''}`,
+      text: t('coach.ctx.used', { used: formatTokens(ctx), win: formatTokens(win), pct, over: over ? t('coach.ctx.over') : '' }),
       cls: 'asc-ctx' + (over ? ' asc-ctx-warn' : ''),
     });
-    ctxEl.setAttr('title', `超过 ${this.plugin.settings.compressThreshold}% 阈值（≈${formatTokens(limit)}）时发送前自动压缩，可在设置中调节`);
+    ctxEl.setAttr('title', t('coach.ctx.title', { pct: this.plugin.settings.compressThreshold, limit: formatTokens(limit) }));
     const compressBtn = ctxRow.createEl('button', {
-      text: this.compressing ? '压缩中…' : over ? '强制压缩' : '压缩',
+      text: this.compressing ? t('coach.ctx.compressing') : over ? t('coach.ctx.compressForce') : t('coach.ctx.compress'),
       cls: 'asc-btn asc-btn-small' + (over ? ' asc-btn-danger' : ''),
     });
     compressBtn.disabled = this.compressing;
-    compressBtn.setAttr('title', this.compressing ? '正在压缩，请稍候' : '把较早对话压缩为摘要，保留最近几轮（需几秒）');
+    compressBtn.setAttr('title', this.compressing ? t('coach.ctx.compressing.title') : t('coach.ctx.compress.title'));
     compressBtn.addEventListener('click', () => void this.compressContext(true));
   }
 
@@ -634,24 +645,24 @@ export class MainView extends ItemView {
     this.mode = 'Maths';
     await this.startSession();
     await this.startTimer();
-    new Notice('进阶角：把思维题/估算题原文发过来——先独立想满门槛，卡住本身就是训练');
+    new Notice(t('coach.oxbridge.started'));
   }
 
   /** 独立思考计时器：会话内能力，按档案门槛倒计时；跑满后给下一条消息带思考凭证 */
   private async startTimer(): Promise<void> {
     if (!this.systemPrompt) {
-      new Notice('先点「新会话」开始——独立思考计时只在会话内有意义（针对你正在做的题）');
+      new Notice(t('coach.timer.needSession'));
       return;
     }
     if (this.timerDeadline > Date.now()) {
-      new Notice(`⏱ 已在计时，剩 ${fmtRemain(this.timerDeadline - Date.now())}`);
+      new Notice(t('coach.timer.running', { remain: fmtRemain(this.timerDeadline - Date.now()) }));
       return;
     }
     const profile = await this.plugin.profiles.load();
     const minutes = profile.independent_minutes || 15;
     this.timerMinutes = minutes;
     this.timerDeadline = Date.now() + minutes * 60000;
-    new Notice(`⏱ 开始独立思考，${minutes} 分钟内不能求助——先把试过的方向都列出来`);
+    new Notice(t('coach.timer.started', { min: minutes }));
     this.render();
   }
 
@@ -670,25 +681,25 @@ export class MainView extends ItemView {
   private async compressContext(manual: boolean): Promise<void> {
     if (this.busy || this.compressing) return;
     if (!ContextCompressor.shouldCompress(this.messages)) {
-      if (manual) new Notice('对话还短，不需要压缩');
+      if (manual) new Notice(t('coach.compress.short'));
       return;
     }
     if (!manual && this.contextTokens() <= this.compressLimit()) return;
     if (!this.plugin.llm.configured) {
-      new Notice('请先在设置里配置 LLM');
+      new Notice(t('coach.notConfigured'));
       return;
     }
     this.compressing = true;
     this.busy = true;
     this.render();
-    new Notice(manual ? '正在压缩上下文（总结较早对话，需几秒，请稍候）…' : '上下文已超过阈值，正在自动压缩（需几秒，请稍候）…', 6000);
+    new Notice(manual ? t('coach.compress.start') : t('coach.compress.auto'), 6000);
     try {
       const before = this.contextTokens();
       const r = await ContextCompressor.compress(this.messages, this.plugin.llm);
       this.messages = r.messages;
-      new Notice(`✓ 上下文已压缩：≈${formatTokens(before)} → ≈${formatTokens(this.contextTokens())} token`);
+      new Notice(t('coach.compress.done', { before: formatTokens(before), after: formatTokens(this.contextTokens()) }));
     } catch (e) {
-      new Notice(`压缩失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+      new Notice(t('coach.compress.fail', { msg: e instanceof Error ? e.message : String(e) }), 8000);
     } finally {
       this.compressing = false;
       this.busy = false;
@@ -698,7 +709,7 @@ export class MainView extends ItemView {
 
   private async startSession(autoOpen = true): Promise<void> {
     if (!this.plugin.llm.configured) {
-      new Notice('请先在设置里配置 LLM（接口类型 / Base URL / Key / 模型）');
+      new Notice(t('coach.notConfigured'));
       return;
     }
     // 防漏数据：开新会话前先把上一轮的未存档内容落盘；新题新计时，取消旧计时与凭证
@@ -727,7 +738,7 @@ export class MainView extends ItemView {
   private async openingText(): Promise<string> {
     const meta = this.plugin.assembler.meta(this.mode);
     if (!meta) return '';
-    const c = await this.plugin.vaultService.read(`${ROOT}/prompts/${meta.promptFile}`);
+    const c = await this.plugin.assembler.loadPromptPublic(meta.promptFile);
     if (!c) return '';
     const fence = c.match(/```opening\n([\s\S]*?)```/);
     if (fence) return fence[1].trim();
@@ -805,7 +816,7 @@ export class MainView extends ItemView {
     }
     const built = await this.plugin.assembler.buildSystemPrompt(this.mode, extras);
     if (!built) {
-      new Notice(`找不到提示词模板 ${ROOT}/prompts/，请检查 vault 初始化`);
+      new Notice(t('coach.templateMissing', { path: `${ROOT}/prompts/` }));
       return;
     }
     this.systemPrompt = built.prompt;
@@ -815,7 +826,7 @@ export class MainView extends ItemView {
   private async send(text: string): Promise<void> {
     if (!this.systemPrompt || this.busy) return;
     if (this.timerDeadline > Date.now()) {
-      new Notice(`⏱ 还没到求助时间（剩 ${fmtRemain(this.timerDeadline - Date.now())}）。提示词约定：先独立思考满门槛再求助。`);
+      new Notice(t('coach.timer.notYet.detail', { remain: fmtRemain(this.timerDeadline - Date.now()) }));
       return;
     }
     // 自动压缩：发送前超过 80% 窗口时先压缩历史
@@ -866,13 +877,13 @@ export class MainView extends ItemView {
     let bubble: HTMLElement | null = null;
     if (chatEl) {
       bubble = chatEl.createDiv({ cls: 'asc-msg asc-msg-assistant' });
-      bubble.setText('正在等待模型响应… ⏳');
+      bubble.setText(t('coach.waiting'));
     }
     const startedAt = Date.now();
     let waiting = true;
     const waitTicker = window.setInterval(() => {
       if (waiting && bubble) {
-        bubble.setText(`正在等待模型响应… ${Math.round((Date.now() - startedAt) / 1000)} 秒（带图片/长作文时较慢，属正常）`);
+        bubble.setText(t('coach.waiting.secs', { secs: Math.round((Date.now() - startedAt) / 1000) }));
       }
     }, 1000);
 
@@ -904,14 +915,14 @@ export class MainView extends ItemView {
       }
       // 提供商不支持流式（忽略 stream:true 一次性返回）时自动降级，保证回复必达
       if (!raw.trim() && deltas === 0) {
-        if (bubble) bubble.setText('（该接口未返回流式增量，改用整块请求…）');
+        if (bubble) bubble.setText(t('coach.replyDone.fallback'));
         raw = await this.plugin.llm.chat({
           system: this.systemPrompt,
           messages: this.messages,
           maxTokens: 4096,
         });
       }
-      if (!raw.trim()) throw new Error('模型返回内容为空');
+      if (!raw.trim()) throw new Error(t('coach.emptyReply'));
       this.messages.push({ role: 'assistant', content: raw });
       // 结题回复完成：存档并关闭会话（下次切回本科目将新开会话）
       if (this.pendingClose) {
@@ -926,7 +937,7 @@ export class MainView extends ItemView {
         if (vcfg.autoPlayTts) void this.playReplyTts(raw);
       }
     } catch (e) {
-      new Notice(`请求失败：${e instanceof Error ? e.message : String(e)}`, 10000);
+      new Notice(t('coach.requestFail', { msg: e instanceof Error ? e.message : String(e) }), 10000);
       this.messages.pop(); // 撤回未成功的用户消息，方便重试
       this.pendingClose = false;
     } finally {
@@ -958,12 +969,12 @@ export class MainView extends ItemView {
         this.render();
       } catch (e) {
         b.status = 'failed';
-        b.error = e instanceof Error && e.message === 'aborted' ? '超时（单段上限 120 秒）' : (e instanceof Error ? e.message : String(e));
+        b.error = e instanceof Error && e.message === 'aborted' ? t('coach.imgrec.timeout') : (e instanceof Error ? e.message : String(e));
         task.status = 'failed';
         this.stopImgRecTicker();
         this.busy = false;
         this.render();
-        new Notice('图片识别失败：可在进度卡片上从中断处重试', 6000);
+        new Notice(t('coach.imgrec.failNotice'), 6000);
         return;
       }
     }
@@ -971,9 +982,9 @@ export class MainView extends ItemView {
     this.stopImgRecTicker();
     this.imgRecTask = null;
     const blocks = task.batches
-      .map((b, i) => `【图片识别 ${i + 1}：${b.parts.map(p => p.name).join('、')}】\n${b.result ?? ''}`)
+      .map((b, i) => `${t('coach.imgrec.block', { i: i + 1, names: b.parts.map(p => p.name).join('、') })}\n${b.result ?? ''}`)
       .join('\n\n');
-    await this.doSendCore(`${task.msgText}\n\n（以下 ${task.batches.length} 段为附件图片的自动识别转录）\n${blocks}`, []);
+    await this.doSendCore(`${task.msgText}\n\n${t('coach.imgrec.transcript', { n: task.batches.length })}\n${blocks}`, []);
   }
 
   /** 单批识别请求（≤4 张），120 秒超时 */
@@ -982,7 +993,7 @@ export class MainView extends ItemView {
     const timer = window.setTimeout(() => ac.abort(), 120000);
     try {
       return await this.plugin.llm.chat({
-        messages: [{ role: 'user', content: '请完整转录这些图片里的文字内容（题目、板书、图表数据等）；数学公式用 LaTeX；没有文字就简述图片内容。只输出转录，不要解题。', images: parts }],
+        messages: [{ role: 'user', content: 'Please transcribe the text content of these images completely (questions, board notes, charts, data, etc.); math formulas in LaTeX; if there is no text, briefly describe the image content. Output only the transcript, do not solve the problems.', images: parts }],
         maxTokens: 2000,
         signal: ac.signal,
       });
@@ -1006,27 +1017,27 @@ export class MainView extends ItemView {
     const secs = Math.round((Date.now() - task.startedAt) / 1000);
     const done = task.batches.filter(b => b.status === 'done').length;
     card.createDiv( {
-      text: `🖼 图片识别：第 ${Math.min(done + 1, task.batches.length)}/${task.batches.length} 段 · 已用时 ${secs} 秒${task.status === 'failed' ? ' · 已中断' : ''}`,
+      text: t('coach.imgrec.title', { cur: Math.min(done + 1, task.batches.length), total: task.batches.length, secs, interrupted: task.status === 'failed' ? t('coach.imgrec.interrupted') : '' }),
       cls: 'asc-card-title',
     });
     task.batches.forEach((b, i) => {
-      const label = `第 ${i + 1} 段（${b.parts.length} 张：${b.parts.map(p => p.name).join('、')}）`;
-      if (b.status === 'done') card.createDiv( { text: `✓ ${label}：识别完成（${(b.result ?? '').length} 字）`, cls: 'asc-row' });
-      else if (b.status === 'running') card.createDiv( { text: `⏳ ${label}：识别中…（单段超时上限 120 秒，属正常等待）`, cls: 'asc-row' });
-      else if (b.status === 'failed') card.createDiv( { text: `❌ ${label}：${b.error ?? '失败'}`, cls: 'asc-row asc-ctx-warn' });
-      else card.createDiv( { text: `… ${label}：待处理`, cls: 'asc-row asc-muted' });
+      const label = t('coach.imgrec.batch', { i: i + 1, n: b.parts.length, names: b.parts.map(p => p.name).join('、') });
+      if (b.status === 'done') card.createDiv( { text: t('coach.imgrec.done', { label, len: (b.result ?? '').length }), cls: 'asc-row' });
+      else if (b.status === 'running') card.createDiv( { text: t('coach.imgrec.running', { label }), cls: 'asc-row' });
+      else if (b.status === 'failed') card.createDiv( { text: t('coach.imgrec.failed', { label, err: b.error ?? t('grading.status.failed') }), cls: 'asc-row asc-ctx-warn' });
+      else card.createDiv( { text: t('coach.imgrec.pending', { label }), cls: 'asc-row asc-muted' });
     });
     const btns = card.createDiv({ cls: 'asc-row' });
     if (task.status === 'failed') {
-      btns.createEl('button', { text: '从中断处重试', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => {
+      btns.createEl('button', { text: t('coach.imgrec.retry'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => {
         this.busy = true;
         void this.runImgRec();
       });
-      btns.createEl('button', { text: '取消识别', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+      btns.createEl('button', { text: t('coach.imgrec.cancel'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
         this.stopImgRecTicker();
         this.imgRecTask = null;
         this.busy = false;
-        new Notice('已取消图片识别，原消息未发送');
+        new Notice(t('coach.imgrec.cancelled'));
         this.render();
       });
     }
@@ -1049,7 +1060,7 @@ export class MainView extends ItemView {
     const oldMode = this.mode;
     if (newMode === oldMode) return true;
     if (this.busy) {
-      new Notice('等当前回复完成再切换科目');
+      new Notice(t('coach.switchBusy'));
       return false;
     }
     this.saveCurrentSlot();
@@ -1084,7 +1095,7 @@ export class MainView extends ItemView {
     this.pendingImages = [];
     this.sessionSummary = '';
     delete this.slots[this.mode];
-    new Notice('已结题：会话已存档并关闭');
+    new Notice(t('coach.closed'));
     // 自动续开新会话（无需手动点按钮）
     await this.startSession(true);
   }
@@ -1117,12 +1128,12 @@ export class MainView extends ItemView {
     if (!rows.length) return;
 
     const bar = parent.createDiv({ cls: 'asc-logbar' });
-    bar.createSpan({ text: `检测到 ${rows.length} 条 log 行：` });
+    bar.createSpan({ text: t('logbar.detected', { n: rows.length }) });
     for (const r of rows) {
       bar.createDiv( { text: `【${r.subject}】${r.topic} · ${r.code} · ${r.desc ?? ''}`, cls: 'asc-logrow' });
     }
     const btns = bar.createDiv();
-    btns.createEl('button', { text: '一键入库', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
+    btns.createEl('button', { text: t('logbar.add'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
       void (async () => {
         (ev.target as HTMLElement).setAttr('disabled', 'true');
         let ok = 0;
@@ -1131,16 +1142,16 @@ export class MainView extends ItemView {
             const res = await this.plugin.errorLog.addEntry(r);
             if (res) ok++;
           } catch (e) {
-            new Notice(`入库失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+            new Notice(t('logbar.addFail', { msg: e instanceof Error ? e.message : String(e) }), 8000);
             break;
           }
         }
-        new Notice(`已入库 ${ok} 条（复发条目自动 +1 并顺延复查日期）`);
+        new Notice(t('logbar.added', { n: ok }));
         void this.plugin.refreshStatusBar();
         bar.remove();
       })();
     });
-    btns.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
+    btns.createEl('button', { text: t('common.ignore'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
   }
 
   /** 教练雅思会话：检测回复里的批改结果 JSON → 确认卡片，分数进台账、表达进积累库 */
@@ -1152,32 +1163,32 @@ export class MainView extends ItemView {
     const bar = parent.createDiv({ cls: 'asc-logbar' });
     const fmt = (v: number | null) => (v === null ? '-' : String(v));
     // 来源：有引用文档则精确到 vault 文档路径，否则才是「教练会话」（直接贴作文时）
-    const source = this.attachments.length ? this.attachments[this.attachments.length - 1].path : '教练会话';
+    const source = this.attachments.length ? this.attachments[this.attachments.length - 1].path : t('coach.sessionDirect');
     bar.createSpan({
-      text: `检测到批改结果：总分 ${fmt(s.overall)}（TR ${fmt(s.tr)} / CC ${fmt(s.cc)} / LR ${fmt(s.lr)} / GRA ${fmt(s.gra)}）· ${parsed.expressions.length} 条高分表达`,
+      text: t('ielts.result', { o: fmt(s.overall), tr: fmt(s.tr), cc: fmt(s.cc), lr: fmt(s.lr), gra: fmt(s.gra), n: parsed.expressions.length }),
     });
     bar.createDiv( {
-      text: `来源：${source}${this.attachments.length ? '（最近引用的文档）' : '（未引用文档，作文直接贴在对话里）'}`,
+      text: t('ielts.source', { src: source, note: this.attachments.length ? t('ielts.source.note') : t('ielts.source.none') }),
       cls: 'asc-logrow',
     });
     const btns = bar.createDiv();
-    btns.createEl('button', { text: '入库分数与表达', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
+    btns.createEl('button', { text: t('ielts.register'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
       void (async () => {
         (ev.target as HTMLElement).setAttr('disabled', 'true');
         try {
           await this.plugin.ielts.registerGrade(s, source);
           const added = parsed.expressions.length
-            ? await this.plugin.expressions.appendAll(parsed.expressions, `教练会话-${todayStr()}`)
+            ? await this.plugin.expressions.appendAll(parsed.expressions, `${t('coach.sessionSrc')}-${todayStr()}`)
             : 0;
-          new Notice(`已入库：分数进批改记录（趋势可见）${added ? `，${added} 条表达进积累库` : ''}`);
+          new Notice(t('ielts.registered', { exprs: added ? t('ielts.registered.exprs', { n: added }) : '' }));
           bar.remove();
         } catch (e) {
-          new Notice(`入库失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+          new Notice(t('wrong.addFail', { msg: e instanceof Error ? e.message : String(e) }), 8000);
           (ev.target as HTMLElement).removeAttribute('disabled');
         }
       })();
     });
-    btns.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
+    btns.createEl('button', { text: t('common.ignore'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
   }
 
   /** 订正会话：检测回复里的错题 JSON → 确认卡片，入错题本台账 */
@@ -1187,10 +1198,10 @@ export class MainView extends ItemView {
     if (!w || !w.topic) return;
 
     const bar = parent.createDiv({ cls: 'asc-logbar' });
-    bar.createSpan({ text: `检测到错题记录：【${w.subject ?? '-'}】${w.topic} · ${w.code ?? '-'} · ${w.status === '未订正' ? '未订正（下次自动跟进）' : '已订正'}` });
-    bar.createDiv( { text: `我的错误：${w.myError ?? '-'} · 答案基线：${w.answerSource ?? '模型解答（待确认）'}`, cls: 'asc-logrow' });
+    bar.createSpan({ text: t('wrong.detected', { subject: w.subject ?? '-', topic: w.topic, code: w.code ?? '-', status: w.status === '未订正' ? t('wrong.detected.open') : t('wrong.detected.fixed') }) });
+    bar.createDiv( { text: t('wrong.myError', { e: w.myError ?? '-', a: w.answerSource ?? t('wrong.answerPending') }), cls: 'asc-logrow' });
     const btns = bar.createDiv();
-    btns.createEl('button', { text: '入错题本', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
+    btns.createEl('button', { text: t('wrong.add'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
       void (async () => {
         (ev.target as HTMLElement).setAttr('disabled', 'true');
         try {
@@ -1198,15 +1209,15 @@ export class MainView extends ItemView {
             subject: w.subject, topic: w.topic, myError: w.myError, code: w.code,
             answerSource: w.answerSource, status: w.status === '未订正' ? '未订正' : '已订正',
           });
-          new Notice(entry ? `已入错题本（${entry.id}）${entry.status === '未订正' ? '，下次会话自动跟进' : ''}` : '今日已有同考点记录，未重复登记');
+          new Notice(entry ? t('wrong.added', { id: entry.id, status: entry.status === '未订正' ? t('wrong.added.open') : '' }) : t('wrong.dup'));
           bar.remove();
         } catch (e) {
-          new Notice(`入库失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+          new Notice(t('wrong.addFail', { msg: e instanceof Error ? e.message : String(e) }), 8000);
           (ev.target as HTMLElement).removeAttribute('disabled');
         }
       })();
     });
-    btns.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
+    btns.createEl('button', { text: t('common.ignore'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
   }
 
   /** 口语训练：检测终训评分/表达/错题机器块 → 确认卡片一次入库三处（口语台账/表达库/错题本） */
@@ -1220,49 +1231,49 @@ export class MainView extends ItemView {
     if (finals.length) {
       const s = finals[finals.length - 1];
       bar.createSpan({
-        text: `检测到终训评分：FC ${fmtBand(s.fc)} / LR ${fmtBand(s.lr)} / GRA ${fmtBand(s.gra)} / P ${fmtBand(s.p)} · 总分 ${SpeakingService.fmtOverall(s)}${s.p === null ? '（不含发音）' : ''}`,
+        text: t('speaking.final', { fc: fmtBand(s.fc), lr: fmtBand(s.lr), gra: fmtBand(s.gra), p: fmtBand(s.p), o: SpeakingService.fmtOverall(s), noP: s.p === null ? t('speaking.noP') : '' }),
       });
-      if (s.biggestIssue) bar.createDiv( { text: `最大问题：${s.biggestIssue}`, cls: 'asc-logrow' });
+      if (s.biggestIssue) bar.createDiv( { text: t('speaking.issue', { issue: s.biggestIssue }), cls: 'asc-logrow' });
     }
     const parts: string[] = [];
-    if (exprs.length) parts.push(`${exprs.length} 条高分表达`);
-    if (wrongs.length) parts.push(`${wrongs.length} 条错题（SP/GR/VX）`);
+    if (exprs.length) parts.push(t('speaking.exprs', { n: exprs.length }));
+    if (wrongs.length) parts.push(t('speaking.wrongs', { n: wrongs.length }));
     if (parts.length) bar.createDiv( { text: parts.join(' · '), cls: 'asc-logrow' });
 
     const row = bar.createDiv({ cls: 'asc-row' });
     // 模式选择：台账按模考/陪练/讨论区分趋势
     const modeSel = row.createEl('select', { cls: 'asc-select' });
     for (const m of ['模考', '陪练', '讨论']) modeSel.createEl('option', { text: m, value: m });
-    row.createEl('button', { text: '入库（分数+表达+错题）', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
+    row.createEl('button', { text: t('speaking.register'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
       void (async () => {
         (ev.target as HTMLElement).setAttr('disabled', 'true');
         try {
           const msgs: string[] = [];
           if (finals.length) {
             await this.plugin.speaking.registerScore(finals[finals.length - 1], modeSel.value);
-            msgs.push('分数进口语记录（趋势可见）');
+            msgs.push(t('speaking.registered.score'));
           }
           if (exprs.length) {
-            const added = await this.plugin.expressions.appendAll(exprs, `口语训练-${todayStr()}`);
-            if (added) msgs.push(`${added} 条表达进积累库`);
+            const added = await this.plugin.expressions.appendAll(exprs, `${t('coach.speakingSrc')}-${todayStr()}`);
+            if (added) msgs.push(t('speaking.registered.exprs', { n: added }));
           }
           if (wrongs.length) {
             let added = 0;
             for (const w of wrongs) {
-              const e = await this.plugin.wrongAnswers.addEntry({ subject: '雅思口语', topic: w.topic, myError: w.myError, code: w.code, answerSource: '口语训练', status: '未订正' });
+              const e = await this.plugin.wrongAnswers.addEntry({ subject: '雅思口语', topic: w.topic, myError: w.myError, code: w.code, answerSource: t('coach.speakingSrc'), status: '未订正' });
               if (e) added++;
             }
-            if (added) msgs.push(`${added} 条错题进错题本（下次自动跟进）`);
+            if (added) msgs.push(t('speaking.registered.wrongs', { n: added }));
           }
-          new Notice(msgs.length ? `已入库：${msgs.join('，')}` : '今日已有同考点记录，未重复登记');
+          new Notice(msgs.length ? t('speaking.registered', { list: msgs.join('，') }) : t('wrong.dup'));
           bar.remove();
         } catch (e) {
-          new Notice(`入库失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+          new Notice(t('wrong.addFail', { msg: e instanceof Error ? e.message : String(e) }), 8000);
           (ev.target as HTMLElement).removeAttribute('disabled');
         }
       })();
     });
-    row.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
+    row.createEl('button', { text: t('common.ignore'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
   }
 
   /** 口语训练：按句合成并播报 AI 回复（可打断；失败不影响文字流） */
@@ -1287,7 +1298,7 @@ export class MainView extends ItemView {
         const st: string = ctx.state; // resume 会改变 state，需宽类型读取避免 TS 窄化误报
         if (st !== 'running') {
           void this.voiceLog('WARN', 'TTS 播报', `AudioContext state=${st}（iOS 未解锁：需先点一次🎤或发送）`);
-          new Notice('iOS 音频未解锁（可能无声）：请到设置→语音训练点一次「播报测试」', 8000);
+          new Notice(t('coach.ttsNotUnlocked'), 8000);
         }
       }
       for (const s of sents) {
@@ -1308,7 +1319,7 @@ export class MainView extends ItemView {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       void this.voiceLog('ERROR', 'TTS 播报', msg);
-      new Notice(`播报失败：${msg}（详见 雅思/口语/语音日志.md）`, 6000);
+      new Notice(t('coach.ttsFail', { msg }), 6000);
     } finally {
       this.ttsSource = null;
       this.ttsPlaying = false;
@@ -1381,7 +1392,7 @@ export class MainView extends ItemView {
     }
     await this.plugin.vaultService.append(path, lines.join('\n'));
     this.savedCount = this.messages.length;
-    if (notify) new Notice(`已存档：${path}`);
+    if (notify) new Notice(t('archive.done', { path }));
   }
 
   // ─── 历史会话 ───────────────────────────────────────────────
@@ -1398,7 +1409,7 @@ export class MainView extends ItemView {
   private async loadSession(path: string): Promise<void> {
     const content = await this.plugin.vaultService.read(path);
     if (!content) {
-      new Notice('会话文件读取失败');
+      new Notice(t('coach.loadFail'));
       return;
     }
     await this.archiveIfNeeded(false);
@@ -1407,7 +1418,7 @@ export class MainView extends ItemView {
     const mode = SUBJECTS.find(s => s.key === (data.mode as ModeKey)) ? (data.mode as ModeKey) : 'Maths';
     const messages = parseSessionMessages(content);
     if (!messages.length) {
-      new Notice('该文件里没有可解析的对话');
+      new Notice(t('coach.loadEmpty'));
       return;
     }
 
@@ -1419,7 +1430,7 @@ export class MainView extends ItemView {
     this.tab = 'coach';
     await this.rebuildSystemPrompt();
     this.render();
-    new Notice(`已加载历史会话，可直接继续（新消息会追加到同一文件）`);
+    new Notice(t('coach.loadedSession'));
   }
 
   // ─── 引用文档 ───────────────────────────────────────────────
@@ -1436,7 +1447,7 @@ export class MainView extends ItemView {
             for (const p of imgPaths) {
               if (!this.pendingImages.includes(p)) this.pendingImages.push(p);
             }
-            if (imgPaths.length) new Notice(`引用文档含 ${imgPaths.length} 张图片，将随下一条消息发送`);
+            if (imgPaths.length) new Notice(t('coach.attach.imagesSent', { n: imgPaths.length }));
           }
         } catch {
           // 图片提取失败不阻塞文档引用
@@ -1456,7 +1467,7 @@ export class MainView extends ItemView {
     const card = el.createDiv({ cls: 'asc-card asc-queue-card' });
     const head = card.createDiv({ cls: 'asc-queue-head' });
     const tg = head.createEl('button', { text: expanded ? '▾' : '▸', cls: 'asc-btn asc-btn-icon asc-fold-btn' });
-    tg.setAttr('title', expanded ? '收起细节' : '展开细节');
+    tg.setAttr('title', expanded ? t('records.hintCollapse') : t('records.hintExpand'));
     tg.addEventListener('click', () => { this.expanded[key] = !expanded; this.render(); });
     head.createSpan({ text: title, cls: 'asc-queue-title' });
     head.createSpan({ text: badge, cls: 'asc-queue-badge' + (hot ? ' asc-badge-hot' : '') });
@@ -1471,7 +1482,7 @@ export class MainView extends ItemView {
     const ROW_CAP = 50;
 
     el.createDiv( {
-      text: '记录中心：A-Level 与雅思记录统一展示（数据文件保持独立，零信息丢失）；全部明细见底部 .md 源文件。',
+      text: t('records.header'),
       cls: 'asc-muted',
     });
 
@@ -1481,14 +1492,14 @@ export class MainView extends ItemView {
     };
 
     // ① A-Level 失分记录（带科目/状态筛选）
-    const b1 = this.collapsibleSection('rec-errorlog', el, '① A-Level 失分记录', `${entries.length} 条`, entries.length > 0);
+    const b1 = this.collapsibleSection('rec-errorlog', el, t('records.errorlog'), t('records.errorlog.count', { n: entries.length }), entries.length > 0);
     if (b1) {
       const bar = b1.createDiv({ cls: 'asc-row' });
       const subjectSel = bar.createEl('select', { cls: 'asc-select' });
-      subjectSel.createEl('option', { text: '全部科目', value: '' });
+      subjectSel.createEl('option', { text: t('records.allSubjects'), value: '' });
       for (const s of ['Maths', 'Physics', 'Chem', 'CS', 'Econ']) subjectSel.createEl('option', { text: s, value: s });
       const statusSel = bar.createEl('select', { cls: 'asc-select' });
-      statusSel.createEl('option', { text: '全部状态', value: '' });
+      statusSel.createEl('option', { text: t('records.allStatus'), value: '' });
       for (const s of ['未消除', '观察中', '已消除']) statusSel.createEl('option', { text: s, value: s });
       const tableWrap = b1.createDiv({ cls: 'asc-table-wrap' });
       const draw = () => {
@@ -1497,7 +1508,7 @@ export class MainView extends ItemView {
           e => (!subjectSel.value || e.subject === subjectSel.value) && (!statusSel.value || e.status === statusSel.value),
         );
         if (!filtered.length) {
-          tableWrap.createDiv({ text: '没有符合条件的条目。', cls: 'asc-empty' });
+          tableWrap.createDiv({ text: t('records.empty'), cls: 'asc-empty' });
           return;
         }
         const table = tableWrap.createEl('table', { cls: 'asc-table' });
@@ -1507,7 +1518,7 @@ export class MainView extends ItemView {
           const tr = table.createEl('tr');
           for (const cell of [e.id, e.date, e.subject, e.level, e.topic, e.code, e.desc, String(e.recurrence), e.status, e.reviewDate]) tr.createEl('td', { text: cell });
         }
-        if (filtered.length > ROW_CAP) tableWrap.createDiv({ text: `… 仅显示最近 ${ROW_CAP} 条，全 ${filtered.length} 条见 error-log.md`, cls: 'asc-muted' });
+        if (filtered.length > ROW_CAP) tableWrap.createDiv({ text: t('records.onlyRecent', { n: ROW_CAP, total: filtered.length }), cls: 'asc-muted' });
       };
       subjectSel.addEventListener('change', draw);
       statusSel.addEventListener('change', draw);
@@ -1516,10 +1527,10 @@ export class MainView extends ItemView {
 
     // ② 雅思批改记录（评分事件，与失分表语义不同，独立展示）
     const scores = await this.plugin.ielts.loadScores();
-    const b2 = this.collapsibleSection('rec-grades', el, '② 雅思批改记录（趋势）', `${scores.length} 次`, scores.length > 0);
+    const b2 = this.collapsibleSection('rec-grades', el, t('records.grades'), t('records.grades.count', { n: scores.length }), scores.length > 0);
     if (b2) {
       if (!scores.length) {
-        b2.createDiv({ text: '还没有批改记录。', cls: 'asc-empty' });
+        b2.createDiv({ text: t('records.grades.empty'), cls: 'asc-empty' });
       } else {
         const wrap = b2.createDiv({ cls: 'asc-table-wrap' });
         const st = wrap.createEl('table', { cls: 'asc-table' });
@@ -1538,10 +1549,10 @@ export class MainView extends ItemView {
 
     // ③ 表达积累库（雅思高分表达 + 学科通用，同一能力池）
     const exprs = await this.plugin.expressions.load();
-    const b3 = this.collapsibleSection('rec-exprs', el, '③ 表达积累库', `${exprs.length} 条 · 已掌握 ${exprs.filter(x => x.status === '已掌握').length}`, exprs.length > 0);
+    const b3 = this.collapsibleSection('rec-exprs', el, t('records.exprs'), t('records.exprs.count', { n: exprs.length, mastered: exprs.filter(x => x.status === '已掌握').length }), exprs.length > 0);
     if (b3) {
       if (!exprs.length) {
-        b3.createDiv({ text: '还没有积累表达——批改作文后自动入库。', cls: 'asc-empty' });
+        b3.createDiv({ text: t('records.exprs.empty'), cls: 'asc-empty' });
       } else {
         const wrap = b3.createDiv({ cls: 'asc-table-wrap' });
         const et = wrap.createEl('table', { cls: 'asc-table' });
@@ -1558,10 +1569,10 @@ export class MainView extends ItemView {
     // ④ 错题本（订正与卡题统一记录）
     const was = await this.plugin.wrongAnswers.load();
     const openWasCount = was.filter(w => w.status === '未订正').length;
-    const b4 = this.collapsibleSection('rec-wrongs', el, '④ 错题本', `${was.length} 条${openWasCount ? ` · 未订正 ${openWasCount}` : ''}`, was.length > 0);
+    const b4 = this.collapsibleSection('rec-wrongs', el, t('records.wrongs'), t('records.wrongs.count', { n: was.length, open: openWasCount ? t('records.wrongs.open', { n: openWasCount }) : '' }), was.length > 0);
     if (b4) {
       if (!was.length) {
-        b4.createDiv({ text: '还没有错题记录——教练会话里问任何题（订正/卡住），结题后可一键入库。', cls: 'asc-empty' });
+        b4.createDiv({ text: t('records.wrongs.empty'), cls: 'asc-empty' });
       } else {
         const wrap = b4.createDiv({ cls: 'asc-table-wrap' });
         const wt = wrap.createEl('table', { cls: 'asc-table' });
@@ -1576,10 +1587,10 @@ export class MainView extends ItemView {
 
     // ⑤ 提问记录（最近 20 条）
     const tags = (await this.plugin.engine.loadQuestionTags()).slice(-20).reverse();
-    const b5 = this.collapsibleSection('rec-questions', el, '⑤ 提问记录', `最近 ${tags.length} 条`, tags.length > 0);
+    const b5 = this.collapsibleSection('rec-questions', el, t('records.questions'), t('records.questions.count', { n: tags.length }), tags.length > 0);
     if (b5) {
       if (!tags.length) {
-        b5.createDiv({ text: '还没有提问记录——每次结题自动打标。', cls: 'asc-empty' });
+        b5.createDiv({ text: t('records.questions.empty'), cls: 'asc-empty' });
       } else {
         const wrap = b5.createDiv({ cls: 'asc-table-wrap' });
         const tt = wrap.createEl('table', { cls: 'asc-table' });
@@ -1595,10 +1606,10 @@ export class MainView extends ItemView {
     // ⑥ 概念地图（模式 F 登记；预习/待详学概念注入概念精练提示词）
     const cms = await this.plugin.conceptMap.load();
     const pendingCount = cms.filter(c => c.status !== '已学').length;
-    const b6 = this.collapsibleSection('rec-conceptmap', el, '⑥ 概念地图', `${cms.length} 个概念${pendingCount ? ` · 预习/待详学 ${pendingCount}` : ''}`, cms.length > 0);
+    const b6 = this.collapsibleSection('rec-conceptmap', el, t('records.conceptmap'), t('records.conceptmap.count', { n: cms.length, preview: pendingCount ? t('records.conceptmap.preview', { n: pendingCount }) : '' }), cms.length > 0);
     if (b6) {
       if (!cms.length) {
-        b6.createDiv({ text: '还没有概念地图——概念精练里说「练 F」画章节级关系图，会自动登记。', cls: 'asc-empty' });
+        b6.createDiv({ text: t('records.conceptmap.empty'), cls: 'asc-empty' });
       } else {
         const wrap = b6.createDiv({ cls: 'asc-table-wrap' });
         const ct = wrap.createEl('table', { cls: 'asc-table' });
@@ -1614,10 +1625,10 @@ export class MainView extends ItemView {
 
     // ⑦ 口语记录（口语训练终训评分入库；与写作批改记录并排的趋势）
     const sps = await this.plugin.speaking.loadScores();
-    const b7 = this.collapsibleSection('rec-speaking', el, '⑦ 口语记录（趋势）', `${sps.length} 次`, sps.length > 0);
+    const b7 = this.collapsibleSection('rec-speaking', el, t('records.speaking'), t('records.grades.count', { n: sps.length }), sps.length > 0);
     if (b7) {
       if (!sps.length) {
-        b7.createDiv({ text: '还没有口语评分——教练页签选「雅思口语训练」，终训总结后确认入库。', cls: 'asc-empty' });
+        b7.createDiv({ text: t('records.speaking.empty'), cls: 'asc-empty' });
       } else {
         const wrap = b7.createDiv({ cls: 'asc-table-wrap' });
         const st = wrap.createEl('table', { cls: 'asc-table' });
@@ -1634,10 +1645,10 @@ export class MainView extends ItemView {
     // ⑧ 章节进度（解锁的章节注入对应科目教练提示词，聚焦学习与复习）
     const chs = await this.plugin.chapters.load();
     const unlockedN = chs.filter(c => c.status !== '锁定').length;
-    const b8 = this.collapsibleSection('rec-chapters', el, '⑧ 章节进度', `${chs.length} 章 · 解锁 ${unlockedN}`, chs.length > 0);
+    const b8 = this.collapsibleSection('rec-chapters', el, t('records.chapters'), t('records.chapters.count', { n: chs.length, u: unlockedN }), chs.length > 0);
     if (b8) {
       if (!chs.length) {
-        b8.createDiv({ text: '还没有章节——在 记录/章节进度.md 登记科目章节后即可在这里控制解锁。', cls: 'asc-empty' });
+        b8.createDiv({ text: t('records.chapters.empty'), cls: 'asc-empty' });
       }
       // 按科目分组折叠：每组标题显示科目 + 章节数/解锁数，默认收起（避免 58 章平铺）
       const SUBJECT_LABEL: Record<string, string> = { Economics: '📘 Economics 经济', Chemistry: '🧪 Chemistry 化学' };
@@ -1654,10 +1665,10 @@ export class MainView extends ItemView {
         const card = b8.createDiv({ cls: 'asc-card asc-queue-card' });
         const head = card.createDiv({ cls: 'asc-queue-head' });
         const tg = head.createEl('button', { text: gExpanded ? '▾' : '▸', cls: 'asc-btn asc-btn-icon asc-fold-btn' });
-        tg.setAttr('title', gExpanded ? '收起细节' : '展开细节');
+        tg.setAttr('title', gExpanded ? t('records.hintCollapse') : t('records.hintExpand'));
         tg.addEventListener('click', () => { this.expanded[gKey] = !gExpanded; this.render(); });
         head.createSpan({ text: SUBJECT_LABEL[subject] ?? subject, cls: 'asc-queue-title' });
-        head.createSpan({ text: `${list.length} 章 · 解锁 ${groupUnlocked}`, cls: 'asc-queue-badge' + (groupUnlocked > 0 ? ' asc-badge-hot' : '') });
+        head.createSpan({ text: `${list.length} ${t('records.chapters.ch')} · ${t('records.chapters.unlocked')} ${groupUnlocked}`, cls: 'asc-queue-badge' + (groupUnlocked > 0 ? ' asc-badge-hot' : '') });
         if (!gExpanded) continue;
         const body = card.createDiv({ cls: 'asc-queue-body' });
         for (const c of list) {
@@ -1667,7 +1678,7 @@ export class MainView extends ItemView {
           head2.createSpan({ text: c.status + (c.unlocked ? `（${c.unlocked}）` : ''), cls: 'asc-muted' });
           const btns = row.createDiv({ cls: 'asc-row' });
           if (c.status === '锁定') {
-            btns.createEl('button', { text: '解锁进入学习', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => {
+            btns.createEl('button', { text: t('records.chapters.unlock'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => {
               void (async () => {
                 await this.plugin.chapters.updateStatus(c.subject, c.chapter, '解锁');
                 this.render();
@@ -1675,36 +1686,36 @@ export class MainView extends ItemView {
             });
           } else {
             if (c.status === '解锁') {
-              btns.createEl('button', { text: '标记已掌握', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+              btns.createEl('button', { text: t('records.chapters.master'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
                 void (async () => {
                   await this.plugin.chapters.updateStatus(c.subject, c.chapter, '已掌握');
                   this.render();
                 })();
               });
             }
-            btns.createEl('button', { text: '锁定', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+            btns.createEl('button', { text: t('records.chapters.lock'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
               void (async () => {
                 await this.plugin.chapters.updateStatus(c.subject, c.chapter, '锁定');
                 this.render();
               })();
             });
           }
-          btns.createEl('button', { text: '打开内容', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(c.file));
+          btns.createEl('button', { text: t('records.chapters.open'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(c.file));
         }
       }
-      b8.createDiv({ text: '解锁的章节会自动注入经济/化学/概念精练教练提示词（章节+术语），未解锁章节不主动训练。', cls: 'asc-muted' });
+      b8.createDiv({ text: t('records.chapters.hint'), cls: 'asc-muted' });
     }
 
     const links = el.createDiv({ cls: 'asc-row' });
-    links.createEl('button', { text: '打开 error-log.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/error-log.md`));
-    links.createEl('button', { text: '批改记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(GRADE_LEDGER_PATH));
-    links.createEl('button', { text: '口语记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(SPEAKING_LEDGER_PATH));
-    links.createEl('button', { text: '积累库.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(EXPR_LIB_PATH));
-    links.createEl('button', { text: '错题本.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(WRONG_ANSWER_PATH));
-    links.createEl('button', { text: '概念地图.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(CONCEPT_MAP_PATH));
-    links.createEl('button', { text: '章节进度.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(CHAPTER_PROGRESS_PATH));
-    links.createEl('button', { text: '提问记录.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/提问记录.md`));
-    links.createEl('button', { text: '术语清单.md', cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/术语清单.md`));
+    links.createEl('button', { text: t('records.errorLog'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/error-log.md`));
+    links.createEl('button', { text: t('records.gradeLedger'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(GRADE_LEDGER_PATH));
+    links.createEl('button', { text: t('records.speakingLedger'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(SPEAKING_LEDGER_PATH));
+    links.createEl('button', { text: t('records.exprLib'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(EXPR_LIB_PATH));
+    links.createEl('button', { text: t('records.wrongBook'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(WRONG_ANSWER_PATH));
+    links.createEl('button', { text: t('records.conceptMap'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(CONCEPT_MAP_PATH));
+    links.createEl('button', { text: t('records.chapterLedger'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(CHAPTER_PROGRESS_PATH));
+    links.createEl('button', { text: t('records.questionLog'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/提问记录.md`));
+    links.createEl('button', { text: t('records.termList'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', open(`${ROOT}/记录/术语清单.md`));
   }
 
   // ─── 复习 ────────────────────────────────────────────────
@@ -1720,11 +1731,11 @@ export class MainView extends ItemView {
     // 顶栏：汇总 + 线下汇报入口
     const topRow = el.createDiv({ cls: 'asc-row' });
     topRow.createSpan({
-      text: `今日全部到期：失分点 ${due.length} · 术语 ${drillTerms.length} · 表达 ${exprDue.length} · 错题 ${openWas.length}`,
+      text: t('review.today', { e: due.length, t: drillTerms.length, x: exprDue.length, w: openWas.length }),
       cls: 'asc-muted',
     });
-    const fbBtn = topRow.createEl('button', { text: '📝 汇报线下练习结果', cls: 'asc-btn asc-btn-small' });
-    fbBtn.setAttr('title', '线下自己练了术语/表达/错题？把结果报回来，同样更新记录');
+    const fbBtn = topRow.createEl('button', { text: t('review.offline'), cls: 'asc-btn asc-btn-small' });
+    fbBtn.setAttr('title', t('review.offline.title'));
     fbBtn.addEventListener('click', () => {
       const ctx = [
         drillTerms.map(t => `- ${t.term}（${t.status}）`).join('\n') || '（无）',
@@ -1746,31 +1757,31 @@ export class MainView extends ItemView {
       this.collapsibleSection(`rev-${key}`, el, title, badge, hot, headerActions);
 
     // ① 失分点复查：不重做原题，让 AI 出同考点、同陷阱的变式题
-    const b1 = queue('points', '① 失分点复查', `${due.length} 条到期`, due.length > 0);
+    const b1 = queue('points', t('review.points'), t('review.points.badge', { n: due.length }), due.length > 0);
     if (b1) {
       if (!due.length) {
-        b1.createDiv({ text: '没有到期失分点。待复查队列到期时这里会出现。', cls: 'asc-empty' });
+        b1.createDiv({ text: t('review.points.empty'), cls: 'asc-empty' });
       }
       for (const e of due) {
         const item = b1.createDiv({ cls: 'asc-queue-item' });
-        item.createDiv( { text: `#${e.id} 【${e.subject}】${e.topic} · ${e.code} · 复发 ${e.recurrence}`, cls: 'asc-card-title' });
+        item.createDiv( { text: t('review.points.item', { id: e.id, subject: e.subject, topic: e.topic, code: e.code, n: e.recurrence }), cls: 'asc-card-title' });
         item.createDiv( { text: e.desc, cls: 'asc-row' });
-        if (e.fix) item.createDiv( { text: `正确做法：${e.fix}`, cls: 'asc-row asc-muted' });
+        if (e.fix) item.createDiv( { text: `${t('review.fix')}：${e.fix}`, cls: 'asc-row asc-muted' });
         const btns = item.createDiv({ cls: 'asc-row' });
-        btns.createEl('button', { text: '出变式题', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.startVariantDrill(e));
-        btns.createEl('button', { text: '复查通过', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+        btns.createEl('button', { text: t('review.variant'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.startVariantDrill(e));
+        btns.createEl('button', { text: t('review.passed'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
           void (async () => {
             const next = e.status === '未消除' ? '观察中' : '已消除';
             await this.plugin.errorLog.updateEntry(e.id, { status: next, reviewDate: addDays(todayStr(), 7) });
-            new Notice(next === '已消除' ? `#${e.id} 已连续两次通过，标记为已消除` : `#${e.id} 通过一次，状态改为观察中`);
+            new Notice(next === '已消除' ? t('review.passedNote', { id: e.id }) : t('review.passedNote2', { id: e.id }));
             void this.plugin.refreshStatusBar();
             this.render();
           })();
         });
-        btns.createEl('button', { text: '再犯', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+        btns.createEl('button', { text: t('review.relapse'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
           void (async () => {
             await this.plugin.errorLog.addEntry({ subject: e.subject, topic: e.topic, code: e.code });
-            new Notice(`#${e.id} 复发 +1，复查日期顺延 3 天`);
+            new Notice(t('review.relapseNote', { id: e.id }));
             void this.plugin.refreshStatusBar();
             this.render();
           })();
@@ -1779,31 +1790,31 @@ export class MainView extends ItemView {
     }
 
     // ② 术语抽查：未稳定/观察中全抽 + 已稳定随机回抽一条（防假性掌握）
-    const b2 = queue('terms', '② 术语抽查', `待抽查 ${drillTerms.length}`, drillTerms.length > 0, h => {
+    const b2 = queue('terms', t('review.terms'), t('review.terms.badge', { n: drillTerms.length }), drillTerms.length > 0, h => {
       if (drillTerms.length) {
-        h.createEl('button', { text: '开始抽查', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.startDrill());
+        h.createEl('button', { text: t('review.terms.start'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.startDrill());
       }
     });
     if (b2) {
       if (!drillTerms.length) {
-        b2.createDiv({ text: '术语清单里没有待抽查条目（学习/结题会自动积累）。', cls: 'asc-empty' });
+        b2.createDiv({ text: t('review.terms.empty'), cls: 'asc-empty' });
       } else {
-        for (const t of drillTerms) {
-          b2.createDiv({ text: `- ${t.term}（${t.subject} · ${t.status}）`, cls: 'asc-row asc-muted' });
+        for (const tm of drillTerms) {
+          b2.createDiv({ text: t('review.terms.item', { term: tm.term, subject: tm.subject, status: tm.status }), cls: 'asc-row asc-muted' });
         }
-        b2.createDiv({ text: '点「开始抽查」：30 秒盲写，含已稳定随机回抽一条。', cls: 'asc-empty' });
+        b2.createDiv({ text: t('review.terms.hint'), cls: 'asc-empty' });
       }
     }
 
     // ③ 表达造句抽查：SM-2 到期的表达逐条造句，AI 判定升档/重置
-    const b3 = queue('exprs', '③ 表达造句抽查', `到期 ${exprDue.length}`, exprDue.length > 0, h => {
+    const b3 = queue('exprs', t('review.exprs'), t('review.exprs.badge', { n: exprDue.length }), exprDue.length > 0, h => {
       if (exprDue.length) {
-        h.createEl('button', { text: '开始造句抽查', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.plugin.startExpressionDrill());
+        h.createEl('button', { text: t('review.exprs.start'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.plugin.startExpressionDrill());
       }
     });
     if (b3) {
       if (!exprDue.length) {
-        b3.createDiv({ text: '没有到期表达——批改作文会自动积累，到期后这里提示。', cls: 'asc-empty' });
+        b3.createDiv({ text: t('review.exprs.empty'), cls: 'asc-empty' });
       } else {
         for (const x of exprDue) {
           b3.createDiv({ text: `- ${x.expr}（${x.type}）`, cls: 'asc-row asc-muted' });
@@ -1812,22 +1823,22 @@ export class MainView extends ItemView {
     }
 
     // ④ 错题跟进：未订正条目逐条手工反馈（线下重做完成即可标记）
-    const b4 = queue('wrongs', '④ 错题跟进', `未订正 ${openWas.length}`, openWas.length > 0);
+    const b4 = queue('wrongs', t('review.wrongs'), t('review.wrongs.badge', { n: openWas.length }), openWas.length > 0);
     if (b4) {
       if (!openWas.length) {
-        b4.createDiv({ text: '没有未订正错题——解题/订正会话中卡住的题会在这里跟进。', cls: 'asc-empty' });
+        b4.createDiv({ text: t('review.wrongs.empty'), cls: 'asc-empty' });
       }
       for (const w of openWas) {
         const item = b4.createDiv({ cls: 'asc-queue-item' });
         item.createDiv( { text: `${w.id}【${w.subject}】${w.topic}`, cls: 'asc-card-title' });
-        item.createDiv( { text: `我的错误：${w.myError || '-'} · 答案基线：${w.answerSource}`, cls: 'asc-row asc-muted' });
+        item.createDiv( { text: `${t('wrong.myError', { e: w.myError || '-', a: w.answerSource })}`, cls: 'asc-row asc-muted' });
         const btns = item.createDiv({ cls: 'asc-row' });
-        const okBtn = btns.createEl('button', { text: '已重做掌握', cls: 'asc-btn asc-btn-small' });
-        okBtn.setAttr('title', '线下/课上已重做并掌握，手工标记为已订正');
+        const okBtn = btns.createEl('button', { text: t('review.wrongs.done'), cls: 'asc-btn asc-btn-small' });
+        okBtn.setAttr('title', t('review.wrongs.done.title'));
         okBtn.addEventListener('click', () => {
           void (async () => {
             const done = await this.plugin.wrongAnswers.updateStatus(w.id, '已订正');
-            new Notice(done ? `${w.id} 已标记为已订正` : '更新失败：条目可能已变更');
+            new Notice(done ? t('review.wrongs.doneNote', { id: w.id }) : t('review.wrongs.doneFail'));
             this.render();
           })();
         });
@@ -1838,15 +1849,15 @@ export class MainView extends ItemView {
   /** 线下反馈确认卡片：解析结果逐条列出，确认后应用到三队记录 */
   private renderFeedbackCard(el: HTMLElement, fb: ReviewFeedback): void {
     const card = el.createDiv({ cls: 'asc-card' });
-    card.createDiv( { text: '线下练习反馈（确认后应用）', cls: 'asc-card-title' });
+    card.createDiv( { text: t('review.feedback'), cls: 'asc-card-title' });
     const mark = (p: boolean) => (p ? '✓' : '✗');
-    for (const t of fb.terms) card.createDiv( { text: `${mark(t.pass)} 术语：${t.name}`, cls: 'asc-row' });
-    for (const x of fb.expressions) card.createDiv( { text: `${mark(x.pass)} 表达：${x.name}`, cls: 'asc-row' });
-    for (const p of fb.points) card.createDiv( { text: `${mark(p.pass)} 失分点：${p.topic}`, cls: 'asc-row' });
-    for (const w of fb.wrongs) card.createDiv( { text: `${mark(w.pass)} 错题：${w.topic}`, cls: 'asc-row' });
+    for (const x of fb.terms) card.createDiv( { text: t('review.feedback.term', { mark: mark(x.pass), name: x.name }), cls: 'asc-row' });
+    for (const x of fb.expressions) card.createDiv( { text: t('review.feedback.expr', { mark: mark(x.pass), name: x.name }), cls: 'asc-row' });
+    for (const p of fb.points) card.createDiv( { text: t('review.feedback.point', { mark: mark(p.pass), topic: p.topic }), cls: 'asc-row' });
+    for (const w of fb.wrongs) card.createDiv( { text: t('review.feedback.wrong', { mark: mark(w.pass), topic: w.topic }), cls: 'asc-row' });
     const btns = card.createDiv({ cls: 'asc-row' });
-    btns.createEl('button', { text: '确认应用', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.applyReviewFeedback(fb));
-    btns.createEl('button', { text: '丢弃', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+    btns.createEl('button', { text: t('review.feedback.apply'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => void this.applyReviewFeedback(fb));
+    btns.createEl('button', { text: t('review.feedback.discard'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
       this.pendingFeedback = null;
       this.render();
     });
@@ -1856,18 +1867,18 @@ export class MainView extends ItemView {
   private async applyReviewFeedback(fb: ReviewFeedback): Promise<void> {
     let applied = 0;
     const misses: string[] = [];
-    for (const t of fb.terms) {
-      const r = await this.plugin.terms.applyDrillResult(t.name, t.pass);
-      if (r) applied++; else misses.push(`术语 ${t.name}`);
+    for (const tm of fb.terms) {
+      const r = await this.plugin.terms.applyDrillResult(tm.name, tm.pass);
+      if (r) applied++; else misses.push(`${t('review.term')} ${tm.name}`);
     }
     for (const x of fb.expressions) {
       const r = await this.plugin.expressions.applyResult(x.name, x.pass);
-      if (r) applied++; else misses.push(`表达 ${x.name}`);
+      if (r) applied++; else misses.push(`${t('review.expr')} ${x.name}`);
     }
     const entries = await this.plugin.errorLog.load();
     for (const p of fb.points) {
       const e = entries.find(x => x.topic.toLowerCase() === p.topic.toLowerCase());
-      if (!e) { misses.push(`失分点 ${p.topic}`); continue; }
+      if (!e) { misses.push(`${t('review.point')} ${p.topic}`); continue; }
       if (p.pass) {
         const next = e.status === '未消除' ? '观察中' : '已消除';
         await this.plugin.errorLog.updateEntry(e.id, { status: next, reviewDate: addDays(todayStr(), 7) });
@@ -1879,14 +1890,14 @@ export class MainView extends ItemView {
     const wrongs = await this.plugin.wrongAnswers.load();
     for (const w of fb.wrongs) {
       const e = wrongs.find(x => x.topic.toLowerCase() === w.topic.toLowerCase());
-      if (!e) { misses.push(`错题 ${w.topic}`); continue; }
+      if (!e) { misses.push(`${t('review.wrong')} ${w.topic}`); continue; }
       if (w.pass) await this.plugin.wrongAnswers.updateStatus(e.id, '已订正');
       // 未掌握则保持未订正，继续自动跟进
       applied++;
     }
     this.pendingFeedback = null;
     void this.plugin.refreshStatusBar();
-    new Notice(misses.length ? `已应用 ${applied} 条；未匹配：${misses.join('、')}` : `已应用 ${applied} 条线下反馈`, misses.length ? 8000 : 4000);
+    new Notice(misses.length ? t('review.feedback.doneMiss', { n: applied, list: misses.join('、') }) : t('review.feedback.done', { n: applied }), misses.length ? 8000 : 4000);
     this.render();
   }
 
@@ -1896,12 +1907,12 @@ export class MainView extends ItemView {
     if (!cm || !cm.concepts.length) return;
 
     const bar = parent.createDiv({ cls: 'asc-logbar' });
-    bar.createSpan({ text: `检测到概念地图：【${cm.subject ?? '-'}】${cm.chapter ?? '-'} · ${cm.concepts.length} 个概念` });
+    bar.createSpan({ text: t('conceptmap.detected', { subject: cm.subject ?? '-', chapter: cm.chapter ?? '-', n: cm.concepts.length }) });
     for (const c of cm.concepts) {
-      bar.createDiv( { text: `${c.status === '已学' ? '✓' : '◌'} ${c.name}（${c.status}）`, cls: 'asc-logrow' });
+      bar.createDiv( { text: t('conceptmap.item', { mark: c.status === '已学' ? '✓' : '◌', name: c.name, status: c.status }), cls: 'asc-logrow' });
     }
     const btns = bar.createDiv();
-    btns.createEl('button', { text: '登记到概念地图', cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
+    btns.createEl('button', { text: t('conceptmap.register'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', ev => {
       void (async () => {
         (ev.target as HTMLElement).setAttr('disabled', 'true');
         try {
@@ -1909,15 +1920,15 @@ export class MainView extends ItemView {
             await this.plugin.conceptMap.upsert({ chapter: cm.chapter ?? '未分章', concept: c.name, status: c.status, subject: cm.subject });
           }
           const pending = cm.concepts.filter(c => c.status !== '已学').length;
-          new Notice(`已登记 ${cm.concepts.length} 个概念${pending ? `，其中 ${pending} 个预习/待详学（以后学到时提示词会提醒）` : ''}`);
+          new Notice(t('conceptmap.registered', { n: cm.concepts.length, pending: pending ? t('conceptmap.pending', { n: pending }) : '' }));
           bar.remove();
         } catch (e) {
-          new Notice(`登记失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+          new Notice(t('conceptmap.fail', { msg: e instanceof Error ? e.message : String(e) }), 8000);
           (ev.target as HTMLElement).removeAttribute('disabled');
         }
       })();
     });
-    btns.createEl('button', { text: '忽略', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
+    btns.createEl('button', { text: t('common.ignore'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
   }
 
   /** 出变式题：跳到教练页签，用对应科目开会话并预填请求 */
@@ -1929,7 +1940,7 @@ export class MainView extends ItemView {
     this.render();
     const input = this.bodyEl.querySelector<HTMLTextAreaElement>('.asc-input-bar textarea');
     if (input) {
-      input.value = `复查任务：针对「${e.topic}」（代码 ${e.code}，曾犯：${e.desc}）出一道同考点、同陷阱的新变式题，不要和原题相同。`;
+      input.value = t('variant.prefill', { topic: e.topic, code: e.code, desc: e.desc });
       input.focus();
     }
   }
@@ -1941,7 +1952,7 @@ function timeStr(): string {
 
 function fmtRemain(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
-  return `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
+  return `${Math.floor(s / 60)} ${t('time.min')} ${s % 60} ${t('time.sec')}`;
 }
 
 /** 语音诊断日志行格式（导出供测试）：[级别] HH:MM:SS · 阶段 · 详情 */
@@ -1960,7 +1971,7 @@ export function stripMachineBlocks(content: string): string {
 
 /** 思考凭证标注（导出供测试）：让教练知道学生真想满了门槛，而非口头声称 */
 export function thinkAnnotation(minutes: number): string {
-  return `\n\n[插件注：该生刚由插件计时完成 ${minutes} 分钟独立思考，达到卡住耐受力门槛，请把试过的方向列出来再继续。]`;
+  return t('coach.thinkCreditNote', { min: minutes });
 }
 
 /** 线下练习反馈：复习四队（失分点/术语/表达/错题）的线下结果结构化 */

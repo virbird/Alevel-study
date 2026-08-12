@@ -8,6 +8,7 @@ import { StatsService } from '../../src/services/StatsService';
 import { InsightEngine } from '../../src/services/InsightEngine';
 import { extractJson } from '../../src/llm/LlmClient';
 import { parseSessionMessages, thinkAnnotation } from '../../src/ui/MainView';
+import { setLang } from '../../src/i18n';
 import { seedLog } from '../unit/errorlog.test';
 import { todayStr } from '../../src/utils/date';
 import type { SessionTag } from '../../src/types';
@@ -92,6 +93,7 @@ export async function run(): Promise<void> {
   eq('存档学生消息数', before, 2);
 
   // 9. 独立思考凭证：计时跑满后的消息标注（供教练按思维题模式验证）
+  setLang('zh'); // 凭证文案随语言切换，断言中文语义
   const ann = thinkAnnotation(15);
   check('凭证含时长与门槛语义', ann.includes('15 分钟') && ann.includes('门槛'));
   check('凭证以插件注开头，与正文分隔', ann.startsWith('\n\n[插件注'));

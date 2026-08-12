@@ -1,6 +1,7 @@
 import { Notice, Plugin, TFile, WorkspaceLeaf, requestUrl } from 'obsidian';
 import type { LlmSettings, VoiceSettings } from './types';
 import { LlmClient } from './llm/LlmClient';
+import { setLang, t } from './i18n';
 import { VaultService, ROOT } from './services/VaultService';
 import { ProfileService } from './services/ProfileService';
 import { ErrorLogService } from './services/ErrorLogService';
@@ -26,6 +27,8 @@ import { todayStr, daysBetween, isoWeekKey } from './utils/date';
 import { fetchAliyunToken } from './voice/AliyunNls';
 
 export interface CoachPluginSettings {
+  /** 界面语言：默认英文，可切中文（vault 数据不受影响） */
+  language: 'en' | 'zh';
   llm: LlmSettings;
   /** 每日提醒已发出的日期，避免重复打扰 */
   lastNoticeDate: string;
@@ -57,6 +60,7 @@ export interface GradingTask {
 }
 
 const DEFAULT_SETTINGS: CoachPluginSettings = {
+  language: 'en',
   llm: { provider: 'openai-compat', baseUrl: 'https://api.openai.com/v1', apiKey: '', model: '' },
   lastNoticeDate: '',
   lastWeeklyStats: '',
@@ -108,6 +112,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   /** 异步初始化（onload 保持同步签名，符合 Plugin 基类约定） */
   private async initAsync(): Promise<void> {
     await this.loadSettings();
+    setLang(this.settings.language);
 
     this.vaultService = new VaultService(this.app, this.manifest.dir ?? '');
     // 语音配置以 vault 内 voice.json 为准（直读存储，根治内存/文件不同步导致的密钥丢失）
@@ -136,14 +141,14 @@ export default class ALevelStudyCoachPlugin extends Plugin {
 
     this.registerView(VIEW_TYPE, leaf => new MainView(leaf, this));
 
-    this.addRibbonIcon('graduation-cap', '打开 A-Level Study Coach', () => this.activateView());
+    this.addRibbonIcon('graduation-cap', t('main.ribbon'), () => this.activateView());
 
-    this.addCommand({ id: 'open-coach', name: '打开学习教练', callback: () => this.activateView() });
-    this.addCommand({ id: 'quick-capture', name: '随手记一条', callback: () => new CaptureModal(this.app, this).open() });
-    this.addCommand({ id: 'onboarding', name: '冷启动：记录当前学习状况', callback: () => new OnboardModal(this.app, this).open() });
-    this.addCommand({ id: 'ielts-grade', name: '雅思：批改当前作文', callback: () => void this.gradeActiveEssay() });
-    this.addCommand({ id: 'ielts-expr-drill', name: '雅思：表达造句抽查', callback: () => void this.startExpressionDrill() });
-    this.addCommand({ id: 'export-weekly', name: '导出本周周报', callback: () => void this.exportWeeklyReport() });
+    this.addCommand({ id: 'open-coach', name: t('main.cmd.open'), callback: () => this.activateView() });
+    this.addCommand({ id: 'quick-capture', name: t('main.cmd.capture'), callback: () => new CaptureModal(this.app, this).open() });
+    this.addCommand({ id: 'onboarding', name: t('main.cmd.onboard'), callback: () => new OnboardModal(this.app, this).open() });
+    this.addCommand({ id: 'ielts-grade', name: t('main.cmd.grade'), callback: () => void this.gradeActiveEssay() });
+    this.addCommand({ id: 'ielts-expr-drill', name: t('main.cmd.exprDrill'), callback: () => void this.startExpressionDrill() });
+    this.addCommand({ id: 'export-weekly', name: t('main.cmd.weekly'), callback: () => void this.exportWeeklyReport() });
 
     this.addSettingTab(new StudyCoachSettingTab(this.app, this));
 
@@ -187,7 +192,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   async getNlsToken(): Promise<string> {
     const v = await this.loadVoiceConfig();
     if (!v.aliyunAccessKeyId || !v.aliyunAccessKeySecret || !v.aliyunAppKey) {
-      throw new Error('语音未配置：请在设置页「语音训练」填阿里云 AccessKey 与 AppKey');
+      throw new Error(t('main.voiceNotConfigured'));
     }
     const now = Math.floor(Date.now() / 1000);
     if (this.voiceToken && this.voiceToken.expireTime - 600 > now) return this.voiceToken.token;
@@ -263,7 +268,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     try {
       const due = await this.errorLog.dueEntries();
       this.statusBarEl.setText(due.length > 0 ? `📌 ${due.length}` : '📌 0');
-      this.statusBarEl.setAttribute('aria-label', due.length > 0 ? `${due.length} 条失分点待复查` : '没有待复查条目');
+      this.statusBarEl.setAttribute('aria-label', due.length > 0 ? t('main.dueStatus', { n: due.length }) : t('main.noDue'));
     } catch {
       this.statusBarEl.setText('📌');
     }
@@ -278,7 +283,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     await this.saveSettings();
     if (due.length === 0) return;
     const minutes = Math.max(3, due.length * 3);
-    new Notice(`A-Level Coach：有 ${due.length} 条失分点到期复查，预计 ${minutes} 分钟。点击 📌 打开。`, 8000);
+    new Notice(t('main.dueNotice', { n: due.length, min: minutes }), 8000);
   }
 
   /**
@@ -309,7 +314,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
       const candidates = await this.engine.generateCandidates(entries, terms);
       const created = await this.suggestions.syncCandidates(candidates);
       if (created > 0) {
-        new Notice(`A-Level Coach：发现 ${created} 个新弱点信号，首页查看建议卡片。`, 8000);
+        new Notice(t('main.signalNotice', { n: created }), 8000);
       }
     } catch {
       // 分析失败不阻塞主功能
@@ -320,7 +325,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
   async gradeActiveEssay(): Promise<void> {
     const file = this.app.workspace.getActiveFile();
     if (!file || !file.path.endsWith('.md')) {
-      new Notice('请先打开含作文的笔记（题目与作文可写在同一篇，支持图片）');
+      new Notice(t('main.needEssay'));
       return;
     }
     new GradeConfirmModal(this.app, this, file.path).open();
@@ -336,7 +341,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
       return;
     }
     if (this.gradingTask?.status === 'running') {
-      new Notice('已有一个批改任务进行中，等它完成或取消后再发起');
+      new Notice(t('main.gradingBusy'));
       return;
     }
     const basename = path.split('/').pop()?.replace(/\.md$/, '') ?? path;
@@ -357,23 +362,25 @@ export default class ALevelStudyCoachPlugin extends Plugin {
       const added = await this.expressions.appendAll(result.expressions, basename);
       const s = result.scores;
       task.status = 'success';
-      task.message =
-        `用时 ${task.elapsed} 秒${s.overall !== null ? ` · 预估总分 ${s.overall}` : ''}` +
-        `${result.imageCount ? ` · 含 ${result.imageCount} 张图片` : ''}${added ? ` · ${added} 条高分表达进积累库` : ''}` +
-        ' · 结果已写入笔记「## AI 批改」小节';
-      new Notice(`✅ 批改成功：${basename}，去雅思页签查看详情`, 6000);
+      task.message = t('main.gradeSummary', {
+        secs: task.elapsed,
+        overall: s.overall !== null ? t('main.gradeOverall', { score: s.overall }) : '',
+        images: result.imageCount ? t('main.gradeImages', { n: result.imageCount }) : '',
+        exprs: added ? t('main.gradeExprs', { n: added }) : '',
+      });
+      new Notice(t('main.gradeOk', { name: basename }), 6000);
     } catch (e) {
       if (this.gradingCancelled) {
         task.status = 'cancelled';
-        task.message = '已取消，未产生任何写入';
+        task.message = t('main.gradeCancelled');
       } else if (controller.signal.aborted) {
         task.status = 'timeout';
-        task.message = `等待超过 ${GRADE_TIMEOUT_MS / 1000} 秒。请检查网络/模型后重试，或换更快的模型`;
-        new Notice(`⏱ 批改超时：${basename}`, 8000);
+        task.message = t('main.gradeTimeout', { secs: GRADE_TIMEOUT_MS / 1000 });
+        new Notice(t('main.gradeTimeout', { secs: GRADE_TIMEOUT_MS / 1000 }), 8000);
       } else {
         task.status = 'failed';
         task.message = e instanceof Error ? e.message : String(e);
-        new Notice(`❌ 批改失败：${basename}`, 8000);
+        new Notice(t('main.gradeFail', { name: basename }), 8000);
       }
     } finally {
       if (this.gradingTicker !== null) {
@@ -458,7 +465,7 @@ export default class ALevelStudyCoachPlugin extends Plugin {
     }
     const due = await this.expressions.due();
     if (!due.length) {
-      new Notice('没有到期表达——批改作文会自动积累，或在表达积累库手动添加');
+      new Notice(t('main.noDueExprs'));
       return;
     }
     new ExpressionDrillModal(this.app, this, due).open();
@@ -470,9 +477,9 @@ export default class ALevelStudyCoachPlugin extends Plugin {
       const path = await this.reports.exportWeekly();
       const file = this.app.vault.getAbstractFileByPath(path);
       if (file instanceof TFile) await this.app.workspace.getLeaf(true).openFile(file);
-      new Notice(`周报已生成：${path}`);
+      new Notice(t('main.weeklyOk', { path }));
     } catch (e) {
-      new Notice(`周报生成失败：${e instanceof Error ? e.message : String(e)}`, 8000);
+      new Notice(t('main.weeklyFail', { msg: e instanceof Error ? e.message : String(e) }), 8000);
     }
   }
 }

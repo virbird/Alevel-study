@@ -2,6 +2,8 @@ import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import type ALevelStudyCoachPlugin from '../main';
 import { LlmClient } from '../llm/LlmClient';
 import { aliyunAsr, aliyunTts } from '../voice/AliyunNls';
+import { t, setLang, type Lang } from '../i18n';
+import { VIEW_TYPE } from './MainView';
 
 export class StudyCoachSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: ALevelStudyCoachPlugin) {
@@ -13,17 +15,40 @@ export class StudyCoachSettingTab extends PluginSettingTab {
     containerEl.empty();
     const llm = this.plugin.settings.llm;
 
-    new Setting(containerEl).setName('LLM 连接').setHeading();
+    // 语言：默认英文；切换后即时生效（设置页与打开的教练视图都重绘）
+    new Setting(containerEl)
+      .setName(t('settings.language'))
+      .setDesc(t('settings.language.desc'))
+      .addDropdown(d =>
+        d
+          .addOption('en', t('settings.lang.en'))
+          .addOption('zh', t('settings.lang.zh'))
+          .setValue(this.plugin.settings.language)
+          .onChange(async v => {
+            const lang = v as Lang;
+            this.plugin.settings.language = lang;
+            await this.plugin.saveSettings();
+            setLang(lang);
+            this.display();
+            // 已打开的教练视图即时重绘为所选语言
+            for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+              const view = leaf.view as unknown as { render: () => void };
+              view.render();
+            }
+          }),
+      );
+
+    new Setting(containerEl).setName(t('settings.llm')).setHeading();
     containerEl.createEl('p', {
-      text: 'API Key 只保存在本机 Obsidian 设置里，直接调用提供商接口。OpenAI 兼容端点同样适用于 DeepSeek、Qwen、OpenRouter、本地代理等。',
+      text: t('settings.llm.desc'),
       cls: 'setting-item-description',
     });
 
     new Setting(containerEl)
-      .setName('接口类型')
+      .setName(t('settings.llm.provider'))
       .addDropdown(d =>
         d
-          .addOptions({ 'openai-compat': 'OpenAI 兼容（/v1/chat/completions）', anthropic: 'Anthropic 原生（/v1/messages）' })
+          .addOptions({ 'openai-compat': 'OpenAI-compatible (/v1/chat/completions)', anthropic: 'Anthropic native (/v1/messages)' })
           .setValue(llm.provider)
           .onChange(async v => {
             llm.provider = v as 'openai-compat' | 'anthropic';
@@ -38,7 +63,7 @@ export class StudyCoachSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Base URL')
+      .setName(t('settings.llm.baseUrl'))
       .addText(t =>
         t
           .setPlaceholder(llm.provider === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1')
@@ -50,7 +75,7 @@ export class StudyCoachSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('API Key')
+      .setName(t('settings.llm.apiKey'))
       .addText(t => {
         t.inputEl.type = 'password';
         t.setValue(llm.apiKey).onChange(async v => {
@@ -60,8 +85,8 @@ export class StudyCoachSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName('当前模型')
-      .setDesc('当前实际使用的模型（也可在下方模型列表「设为默认」或教练页签顶部切换）')
+      .setName(t('settings.llm.model'))
+      .setDesc(t('settings.llm.model.desc'))
       .addText(t =>
         t.setValue(llm.model).onChange(async v => {
           llm.model = v.trim();
@@ -70,9 +95,9 @@ export class StudyCoachSettingTab extends PluginSettingTab {
       );
 
     // ── 模型管理：逐个添加、单独测试、设为默认、删除（按当前接口）──
-    new Setting(containerEl).setName(`模型管理（当前接口：${llm.provider === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'}）`).setHeading();
+    new Setting(containerEl).setName(t('settings.llm.models', { provider: llm.provider === 'anthropic' ? 'Anthropic' : 'OpenAI-compatible' })).setHeading();
     containerEl.createEl('p', {
-      text: '逐个添加该接口的模型；每个可单独测试、设为默认或删除。切换接口后此区显示对应接口的列表。',
+      text: t('settings.llm.models.desc'),
       cls: 'setting-item-description',
     });
     const listEl = containerEl.createDiv({ cls: 'asc-model-list' });
@@ -81,7 +106,7 @@ export class StudyCoachSettingTab extends PluginSettingTab {
       const models = this.plugin.modelList();
       const def = this.plugin.currentModelDefault() || this.plugin.settings.llm.model;
       if (!models.length) {
-        listEl.createDiv({ text: '还没有模型——在下方输入模型名添加', cls: 'asc-muted' });
+        listEl.createDiv({ text: t('settings.llm.noModels'), cls: 'asc-muted' });
         return;
       }
       for (const m of models) {
@@ -95,12 +120,12 @@ export class StudyCoachSettingTab extends PluginSettingTab {
           actions.createEl('button', { text: '设为默认', cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
             void (async () => {
               await this.plugin.setModelDefault(m);
-              new Notice(`默认模型已设为：${m}`);
+              new Notice(t('settings.llm.defaultSet', { name: m }));
               renderList();
             })();
           });
         }
-        const testBtn = actions.createEl('button', { text: '测试', cls: 'asc-btn asc-btn-small' });
+        const testBtn = actions.createEl('button', { text: t('settings.llm.test'), cls: 'asc-btn asc-btn-small' });
         testBtn.addEventListener('click', () => void this.testModel(m, testBtn));
         actions.createEl('button', { text: '✕', cls: 'asc-btn asc-btn-small asc-btn-danger' }).addEventListener('click', () => {
           void (async () => {
@@ -113,14 +138,14 @@ export class StudyCoachSettingTab extends PluginSettingTab {
     renderList();
 
     const addRow = containerEl.createDiv({ cls: 'asc-model-add-row' });
-    const inputEl = addRow.createEl('input', { type: 'text', placeholder: '模型名，如 gpt-4o-mini / deepseek-chat，回车添加' });
-    const addBtn = addRow.createEl('button', { text: '添加模型', cls: 'asc-btn' });
+    const inputEl = addRow.createEl('input', { type: 'text', placeholder: t('settings.llm.addPlaceholder') });
+    const addBtn = addRow.createEl('button', { text: t('settings.llm.addModel'), cls: 'asc-btn' });
     const handleAdd = async () => {
       const name = inputEl.value.trim();
       if (!name) return;
       const existing = this.plugin.modelList();
       if (existing.includes(name)) {
-        new Notice(`模型已存在：${name}`);
+        new Notice(t('settings.llm.exists', { name }));
         inputEl.value = '';
         return;
       }
@@ -130,7 +155,7 @@ export class StudyCoachSettingTab extends PluginSettingTab {
         await this.plugin.setModelDefault(name);
       }
       inputEl.value = '';
-      new Notice(`已添加模型：${name}（可点「测试」验证）`);
+      new Notice(t('settings.llm.added', { name }));
       renderList();
     };
     addBtn.addEventListener('click', () => void handleAdd());
@@ -139,8 +164,8 @@ export class StudyCoachSettingTab extends PluginSettingTab {
     });
 
     new Setting(containerEl)
-      .setName('上下文窗口大小')
-      .setDesc('token 数，用于教练会话的上下文展示与自动压缩阈值（超过 80% 自动压缩）')
+      .setName(t('settings.llm.contextWindow'))
+      .setDesc(t('settings.llm.contextWindow.desc'))
       .addText(t =>
         t.setValue(String(this.plugin.settings.contextWindow)).onChange(async v => {
           const n = Number(v);
@@ -152,8 +177,8 @@ export class StudyCoachSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('自动压缩阈值')
-      .setDesc('上下文用量达到该百分比时，发送前自动压缩（默认 80，可设 10–95；超限会红色提示并可强制压缩）')
+      .setName(t('settings.llm.compressThreshold'))
+      .setDesc(t('settings.llm.compressThreshold.desc'))
       .addText(t =>
         t.setValue(String(this.plugin.settings.compressThreshold)).onChange(async v => {
           const n = Number(v);
@@ -164,93 +189,93 @@ export class StudyCoachSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl).setName('测试连接').addButton(b =>
-      b.setButtonText('测试').onClick(async () => {
-        b.setButtonText('测试中…').setDisabled(true);
+    new Setting(containerEl).setName(t('settings.llm.testConn')).addButton(b =>
+      b.setButtonText(t('settings.llm.testConn')).onClick(async () => {
+        b.setButtonText(t('settings.llm.testingConn')).setDisabled(true);
         try {
           const reply = await this.plugin.llm.chat({
-            messages: [{ role: 'user', content: '请只回复两个字：正常' }],
+            messages: [{ role: 'user', content: 'Please reply with exactly two characters: OK' }],
             maxTokens: 32,
           });
-          new Notice(`连接成功：${reply.slice(0, 40)}`);
+          new Notice(t('settings.llm.connOk', { reply: reply.slice(0, 40) }));
         } catch (e) {
-          new Notice(`连接失败：${e instanceof Error ? e.message : String(e)}`, 10000);
+          new Notice(t('settings.llm.connFail', { msg: e instanceof Error ? e.message : String(e) }), 10000);
         } finally {
-          b.setButtonText('测试').setDisabled(false);
+          b.setButtonText(t('settings.llm.testConn')).setDisabled(false);
         }
       }),
     );
 
     // ── 语音训练（阿里云 NLS；口语训练的按住说话/考官播报）──
-    new Setting(containerEl).setName('语音训练（阿里云）').setHeading();
+    new Setting(containerEl).setName(t('settings.voice')).setHeading();
     containerEl.createEl('p', {
-      text: '口语训练支持按住说话（ASR）与考官播报（TTS）。配置存于 vault 的 雅思/口语/voice.json（会随 vault 同步到其他设备，介意请勿同步该文件）；不填则口语训练保持文字模式。建议为语音功能单独建低额度 AccessKey。',
+      text: t('settings.voice.desc'),
       cls: 'setting-item-description',
     });
     const voice = this.plugin.settings.voice;
 
     new Setting(containerEl)
-      .setName('启用语音')
-      .setDesc('口语科目发送框出现 🎤 按住说话；考官回复可播报（P 维度评分待 P5c 发音评测）')
+      .setName(t('settings.voice.enabled'))
+      .setDesc(t('settings.voice.enabled.desc'))
       .addToggle(t => t.setValue(voice.enabled).onChange(async v => { voice.enabled = v; await this.plugin.saveSettings(); await this.plugin.saveVoiceConfig(); }));
 
     new Setting(containerEl)
-      .setName('AccessKey ID')
+      .setName(t('settings.voice.akId'))
       .addText(t => t.setValue(voice.aliyunAccessKeyId).onChange(async v => { voice.aliyunAccessKeyId = v.trim(); await this.plugin.saveSettings(); await this.plugin.saveVoiceConfig(); }));
 
     new Setting(containerEl)
-      .setName('AccessKey Secret')
+      .setName(t('settings.voice.akSecret'))
       .addText(t => {
         t.inputEl.type = 'password';
         t.setValue(voice.aliyunAccessKeySecret).onChange(async v => { voice.aliyunAccessKeySecret = v.trim(); await this.plugin.saveSettings(); await this.plugin.saveVoiceConfig(); });
       });
 
     new Setting(containerEl)
-      .setName('智能语音 AppKey')
-      .setDesc('阿里云控制台「智能语音交互」项目的 Appkey')
+      .setName(t('settings.voice.appKey'))
+      .setDesc(t('settings.voice.appKey.desc'))
       .addText(t => t.setValue(voice.aliyunAppKey).onChange(async v => { voice.aliyunAppKey = v.trim(); await this.plugin.saveSettings(); await this.plugin.saveVoiceConfig(); }));
 
     new Setting(containerEl)
-      .setName('考官音色')
-      .setDesc('TTS 播报声音')
+      .setName(t('settings.voice.ttsVoice'))
+      .setDesc(t('settings.voice.ttsVoice.desc'))
       .addDropdown(d =>
-        d.addOption('annie', 'annie（英音女声）').addOption('abby', 'abby（美音女声）').addOption('andy', 'andy（美音男声）')
+        d.addOption('annie', 'annie (British female)').addOption('abby', 'abby (American female)').addOption('andy', 'andy (American male)')
           .setValue(voice.ttsVoice).onChange(async v => { voice.ttsVoice = v; await this.plugin.saveSettings(); await this.plugin.saveVoiceConfig(); }),
       );
 
     new Setting(containerEl)
-      .setName('自动播报考官回复')
-      .setDesc('口语会话中 AI 回复完成后自动朗读（可随时点「停止播报」打断）')
+      .setName(t('settings.voice.autoPlay'))
+      .setDesc(t('settings.voice.autoPlay.desc'))
       .addToggle(t => t.setValue(voice.autoPlayTts).onChange(async v => { voice.autoPlayTts = v; await this.plugin.saveSettings(); await this.plugin.saveVoiceConfig(); }));
 
     new Setting(containerEl)
-      .setName('保存录音')
-      .setDesc('每次说话的录音存到 雅思/口语/（WAV 附件，默认关，避免 vault 膨胀）')
+      .setName(t('settings.voice.saveRec'))
+      .setDesc(t('settings.voice.saveRec.desc'))
       .addToggle(t => t.setValue(voice.saveRecordings).onChange(async v => { voice.saveRecordings = v; await this.plugin.saveSettings(); await this.plugin.saveVoiceConfig(); }));
 
     new Setting(containerEl)
-      .setName('连接测试')
-      .setDesc('用当前密钥获取一次阿里云 NLS Token，验证配置是否可用')
+      .setName(t('settings.voice.connTest'))
+      .setDesc(t('settings.voice.connTest.desc'))
       .addButton(b =>
-        b.setButtonText('测试连接').onClick(async () => {
-          b.setButtonText('测试中…').setDisabled(true);
+        b.setButtonText(t('settings.voice.connTestBtn')).onClick(async () => {
+          b.setButtonText(t('settings.llm.testingConn')).setDisabled(true);
           try {
             this.plugin.voiceToken = null; // 强制重新获取
             await this.plugin.getNlsToken();
-            new Notice('✅ 阿里云语音可用（Token 获取成功）', 6000);
+            new Notice(t('settings.voice.connOk'), 6000);
           } catch (e) {
-            new Notice(`❌ 语音连接失败：${e instanceof Error ? e.message : String(e)}`, 10000);
+            new Notice(t('settings.voice.connFail', { msg: e instanceof Error ? e.message : String(e) }), 10000);
           } finally {
-            b.setButtonText('测试连接').setDisabled(false);
+            b.setButtonText(t('settings.voice.connTestBtn')).setDisabled(false);
           }
         }),
       );
 
     new Setting(containerEl)
-      .setName('播报链路')
-      .setDesc('合成一句英文并在这台设备上真实播放，验证「合成→解码→播放」完整链路；点击手势同时解锁 iOS AudioContext（iPad 无声时先点这个）')
+      .setName(t('settings.voice.playback'))
+      .setDesc(t('settings.voice.playback.desc'))
       .addButton(b =>
-        b.setButtonText('播报测试').onClick(() => {
+        b.setButtonText(t('settings.voice.playbackBtn')).onClick(() => {
           void (async () => {
             b.setButtonText('测试中…').setDisabled(true);
             try {
@@ -281,24 +306,24 @@ export class StudyCoachSettingTab extends PluginSettingTab {
               });
               URL.revokeObjectURL(url);
               void this.plugin.voiceDiag('TTS 播报测试', `合成 ${audio.byteLength} 字节 · 解码 ${buf.duration.toFixed(1)}s · ctx ${state0}→${state1} · 双路径（WebAudio+<audio>）已顺序播放`);
-              new Notice(`已顺序播放两条：① Web Audio（ctx ${state0}→${state1}）② 媒体元素 <audio>——哪条有声？（都无声请检查 iPad 静音开关/媒体音量）`, 12000);
+              new Notice(t('settings.voice.playbackOk', { s0: state0, s1: state1 }), 12000);
             } catch (e) {
               const msg = e instanceof Error ? e.message : String(e);
               void this.plugin.voiceDiag('TTS 播报测试', `失败：${msg}`);
-              new Notice(`❌ 播报链路失败：${msg}（详见 雅思/口语/语音日志.md）`, 10000);
+              new Notice(t('settings.voice.playbackFail', { msg }), 10000);
             } finally {
-              b.setButtonText('播报测试').setDisabled(false);
+              b.setButtonText(t('settings.voice.playbackBtn')).setDisabled(false);
             }
           })();
         }),
       );
 
     new Setting(containerEl)
-      .setName('链路诊断')
-      .setDesc('在插件环境内直接测 ASR/TTS 的 WebSocket 链路（不需要麦克风），过程与结果写入 雅思/口语/语音日志.md')
+      .setName(t('settings.voice.diag'))
+      .setDesc(t('settings.voice.diag.desc'))
       .addButton(b =>
-        b.setButtonText('识别链路测试').onClick(async () => {
-          b.setButtonText('测试中…').setDisabled(true);
+        b.setButtonText(t('settings.voice.asrTest')).onClick(async () => {
+          b.setButtonText(t('settings.llm.testingConn')).setDisabled(true);
           try {
             const vcfg = await this.plugin.loadVoiceConfig();
             const token = await this.plugin.getNlsToken();
@@ -307,35 +332,35 @@ export class StudyCoachSettingTab extends PluginSettingTab {
               token, appKey: vcfg.aliyunAppKey,
               onLog: (s, d) => void this.plugin.voiceDiag(s, d),
             });
-            new Notice(`✅ 识别链路正常（静音识别结果：${text || '空'}）`, 6000);
+            new Notice(t('settings.voice.asrOk', { text: text || '-' }), 6000);
           } catch (e) {
-            new Notice(`❌ ${e instanceof Error ? e.message : String(e)}（详见 雅思/口语/语音日志.md）`, 10000);
+            new Notice(t('settings.voice.diagFail', { msg: e instanceof Error ? e.message : String(e) }), 10000);
           } finally {
-            b.setButtonText('识别链路测试').setDisabled(false);
+            b.setButtonText(t('settings.voice.asrTest')).setDisabled(false);
           }
         }),
       )
       .addButton(b =>
-        b.setButtonText('合成链路测试').onClick(async () => {
-          b.setButtonText('测试中…').setDisabled(true);
+        b.setButtonText(t('settings.voice.ttsTest')).onClick(async () => {
+          b.setButtonText(t('settings.llm.testingConn')).setDisabled(true);
           try {
             const vcfg = await this.plugin.loadVoiceConfig();
             const token = await this.plugin.getNlsToken();
             const audio = await aliyunTts('Hello, this is a connection test.', { token, appKey: vcfg.aliyunAppKey, voice: vcfg.ttsVoice });
             void this.plugin.voiceDiag('TTS 链路测试', `合成成功 ${audio.byteLength} 字节 voice=${vcfg.ttsVoice}`);
-            new Notice(`✅ 合成链路正常（${audio.byteLength} 字节音频）`, 6000);
+            new Notice(t('settings.voice.ttsOk', { bytes: audio.byteLength }), 6000);
           } catch (e) {
             void this.plugin.voiceDiag('TTS 链路测试', `失败：${e instanceof Error ? e.message : String(e)}`);
-            new Notice(`❌ ${e instanceof Error ? e.message : String(e)}（详见 雅思/口语/语音日志.md）`, 10000);
+            new Notice(t('settings.voice.diagFail', { msg: e instanceof Error ? e.message : String(e) }), 10000);
           } finally {
-            b.setButtonText('合成链路测试').setDisabled(false);
+            b.setButtonText(t('settings.voice.ttsTest')).setDisabled(false);
           }
         }),
       );
 
-    new Setting(containerEl).setName('数据与提示词').setHeading();
+    new Setting(containerEl).setName(t('settings.data')).setHeading();
     containerEl.createEl('p', {
-      text: '所有学习数据保存在 vault 的 StudyCoach/ 目录（纯 Markdown，可用 git / iCloud 同步）。提示词在 StudyCoach/prompts/ 下，可直接编辑。',
+      text: t('settings.data.desc'),
       cls: 'setting-item-description',
     });
   }
@@ -344,22 +369,22 @@ export class StudyCoachSettingTab extends PluginSettingTab {
   private async testModel(model: string, btn: HTMLButtonElement): Promise<void> {
     const s = this.plugin.settings.llm;
     if (!s.apiKey) {
-      new Notice('请先填写 API Key');
+      new Notice(t('settings.llm.needKey'));
       return;
     }
     const client = new LlmClient({ provider: s.provider, baseUrl: s.baseUrl, apiKey: s.apiKey, model });
-    btn.setText('测试中…');
+    btn.setText(t('settings.llm.testing'));
     btn.disabled = true;
     try {
       const reply = await client.chat({
-        messages: [{ role: 'user', content: '请只回复两个字：正常' }],
+        messages: [{ role: 'user', content: 'Please reply with exactly two characters: OK' }],
         maxTokens: 32,
       });
-      new Notice(`✅ ${model} 可用：${reply.slice(0, 30)}`, 6000);
+      new Notice(t('settings.llm.testOk', { model, reply: reply.slice(0, 30) }), 6000);
     } catch (e) {
-      new Notice(`❌ ${model} 不可用：${e instanceof Error ? e.message : String(e)}`, 10000);
+      new Notice(t('settings.llm.testFail', { model, msg: e instanceof Error ? e.message : String(e) }), 10000);
     } finally {
-      btn.setText('测试');
+      btn.setText(t('settings.llm.test'));
       btn.disabled = false;
     }
   }

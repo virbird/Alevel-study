@@ -1,4 +1,5 @@
 import { App, Modal, TFile } from 'obsidian';
+import { t } from '../i18n';
 
 /** 历史会话列表：点击加载并继续 */
 export class SessionHistoryModal extends Modal {
@@ -9,12 +10,12 @@ export class SessionHistoryModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.addClass('asc-modal');
-    contentEl.createEl('h2', { text: '历史会话' });
+    contentEl.createEl('h2', { text: t('modal.history') });
     if (!this.files.length) {
-      contentEl.createEl('p', { text: '还没有存档的会话。结题或关闭会话时会自动存档到这里。' });
+      contentEl.createEl('p', { text: t('modal.history.empty') });
       return;
     }
-    const filter = contentEl.createEl('input', { attr: { placeholder: '筛选……', type: 'text' } });
+    const filter = contentEl.createEl('input', { attr: { placeholder: t('modal.history.filter'), type: 'text' } });
     const list = contentEl.createDiv({ cls: 'asc-picker-list' });
 
     const draw = () => {
@@ -49,10 +50,10 @@ export class AttachPickerModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.addClass('asc-modal');
-    contentEl.createEl('h2', { text: '引用文档' });
-    contentEl.createEl('p', { text: '选择 vault 中的笔记，其内容将注入本轮会话的上下文（单篇最多 2 万字符）。' });
+    contentEl.createEl('h2', { text: t('modal.attach') });
+    contentEl.createEl('p', { text: t('modal.attach.desc') });
 
-    const filter = contentEl.createEl('input', { attr: { placeholder: '搜索文件名……', type: 'text' } });
+    const filter = contentEl.createEl('input', { attr: { placeholder: t('modal.attach.search'), type: 'text' } });
     const list = contentEl.createDiv({ cls: 'asc-picker-list' });
 
     const draw = () => {
@@ -65,7 +66,7 @@ export class AttachPickerModal extends Modal {
         .sort((a, b) => b.stat.mtime - a.stat.mtime)
         .slice(0, 30);
       if (!files.length) {
-        list.createDiv({ text: '没有匹配的笔记', cls: 'asc-empty' });
+        list.createDiv({ text: t('modal.attach.none'), cls: 'asc-empty' });
         return;
       }
       for (const f of files) {
@@ -98,10 +99,10 @@ export class ImagePickerModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.addClass('asc-modal');
-    contentEl.createEl('h2', { text: '附加图片' });
-    contentEl.createEl('p', { text: '选择 vault 中的图片（png/jpg/gif/webp，单张 ≤5MB，每条消息最多 4 张），随下一条消息发给模型。' });
+    contentEl.createEl('h2', { text: t('modal.image') });
+    contentEl.createEl('p', { text: t('modal.image.desc') });
 
-    const filter = contentEl.createEl('input', { attr: { placeholder: '搜索图片文件名……', type: 'text' } });
+    const filter = contentEl.createEl('input', { attr: { placeholder: t('modal.image.search'), type: 'text' } });
     const list = contentEl.createDiv({ cls: 'asc-picker-list' });
 
     const draw = () => {
@@ -115,7 +116,7 @@ export class ImagePickerModal extends Modal {
         .sort((a, b) => b.stat.mtime - a.stat.mtime)
         .slice(0, 30);
       if (!files.length) {
-        list.createDiv({ text: '没有匹配的图片', cls: 'asc-empty' });
+        list.createDiv({ text: t('modal.image.none'), cls: 'asc-empty' });
         return;
       }
       for (const f of files) {
