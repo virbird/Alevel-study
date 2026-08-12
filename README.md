@@ -43,6 +43,8 @@ tech base simplified-forked from AI Study Buddy.
 | Mastery progress badges | Each status shows the distance to the next state (e.g. "1 spot-check away from stable"); per-row "practice" buttons jump to the coach with a prefilled request (term spot-check / wrong redo / variant) |
 | Weakness profile (L2) | A compressed per-subject profile with ledger-ID backlinks, auto-refreshed after each conclude; injected instead of full tables when many entries are open (saves tokens); the manual-notes section survives regeneration |
 | Review sheet | One click compiles the four due queues into a single printable note (term flashcards / wrong redo / expression sentences); fingerprint drift detection flags a stale sheet for regeneration |
+| Trend charts | Local SVG (no deps): overall-score sparklines for writing/speaking, 30-day mark-loss code bars in Records |
+| Answer rewrite diff | After the English review step, a Compare button opens a word-level before/after diff of the student's own two versions |
 | Quick capture | One natural-language sentence → AI suggests a category → accept / edit / discard |
 
 ### Weakness Analysis
