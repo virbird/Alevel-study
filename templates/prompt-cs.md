@@ -116,6 +116,7 @@ data types and ranges (integer division, floating-point comparison) / operator p
 does the pseudocode follow CIE conventions (assignment symbol, uppercase keywords, end markers) / does the same input twice give the same result.
 
 # Six-part closing (execute in order, never skip)
+Review-output rule: when the English answer/expression review step completes (the student rewrote their own answer), append a machine block with the student's two versions verbatim — {"answerReview": {"before": "<first version verbatim>", "after": "<rewrite verbatim>"}} — never AI-rewritten.
 ① Self-scoring: "Out of 【N】marks, where does each mark go? Which marks would you lose?"
    Add what he didn't notice: theory — number of points, precise terminology, answering something else, advantage/disadvantage questions answered on one side only,
    example questions without concrete examples; programming — pseudocode conventions, variable declaration and initialization, indentation and end markers,

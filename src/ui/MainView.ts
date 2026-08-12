@@ -27,6 +27,8 @@ import { oxbridgeGuidance } from '../services/ReportService';
 import type { ImagePart } from '../types';
 import { ContextCompressor } from '../services/ContextCompressor';
 import { estimateTokens, formatTokens } from '../utils/tokens';
+import { sparkline, bars } from '../utils/svgChart';
+import { AnswerReviewModal } from './AnswerReviewModal';
 
 export const VIEW_TYPE = 'alevel-study-coach-view';
 
@@ -502,6 +504,7 @@ export class MainView extends ItemView {
         else this.renderLogRowPrompt(bubble);
         this.renderWrongAnswerPrompt(bubble, m.content);
         this.renderConceptMapPrompt(bubble, m.content);
+        this.renderAnswerReviewPrompt(bubble, m.content);
       }
     }
     chatEl.scrollTop = chatEl.scrollHeight;
@@ -1539,6 +1542,15 @@ export class MainView extends ItemView {
       const statusSel = bar.createEl('select', { cls: 'asc-select' });
       statusSel.createEl('option', { text: t('records.allStatus'), value: '' });
       for (const s of ['未消除', '观察中', '已消除']) statusSel.createEl('option', { text: statusLabel(s), value: s });
+      // P5a：近 30 天失分码条形分布（本地统计，零 LLM）
+      const cutoff = addDays(todayStr(), -30);
+      const codeCounts = new Map<string, number>();
+      for (const e of entries) if (e.date >= cutoff && e.code) codeCounts.set(e.code, (codeCounts.get(e.code) ?? 0) + 1);
+      const topCodes = [...codeCounts.entries()].sort((x, y) => y[1] - x[1]).slice(0, 8);
+      if (topCodes.length) {
+        b1.createDiv({ text: t('records.chart.codes'), cls: 'asc-muted' });
+        b1.createDiv({ cls: 'asc-chart-wrap' }).innerHTML = bars(topCodes);
+      }
       const tableWrap = b1.createDiv({ cls: 'asc-table-wrap' });
       const draw = () => {
         tableWrap.empty();
@@ -1582,6 +1594,12 @@ export class MainView extends ItemView {
           srcTd.addClass('asc-link');
           srcTd.addEventListener('click', open(s.file));
           for (const v of [s.overall, s.tr, s.cc, s.lr, s.gra]) tr.createEl('td', { text: v === null ? '-' : String(v) });
+        }
+        // P5a：总分折线趋势
+        const trend = scores.map(s => s.overall).filter((v): v is number => v !== null);
+        if (trend.length >= 2) {
+          b2.createDiv({ text: t('records.chart.ielts'), cls: 'asc-muted' });
+          b2.createDiv({ cls: 'asc-chart-wrap' }).innerHTML = sparkline(trend);
         }
       }
     }
@@ -1686,6 +1704,12 @@ export class MainView extends ItemView {
           for (const cell of [s.date, modeLabel(s.mode), s.fc, s.lr, s.gra, s.p, s.overall, s.issue]) tr.createEl('td', { text: cell });
         }
         if (sps.length > ROW_CAP) wrap.createDiv({ text: t('records.onlyRecentSp', { n: ROW_CAP, total: sps.length }), cls: 'asc-muted' });
+        // P5a：口语总分折线趋势
+        const spTrend = sps.map(s => parseFloat(s.overall)).filter(v => Number.isFinite(v));
+        if (spTrend.length >= 2) {
+          b7.createDiv({ text: t('records.chart.speaking'), cls: 'asc-muted' });
+          b7.createDiv({ cls: 'asc-chart-wrap' }).innerHTML = sparkline(spTrend);
+        }
       }
     }
 
@@ -1985,6 +2009,19 @@ export class MainView extends ItemView {
     this.render();
   }
 
+  /** 英文复盘：检测 answerReview 机器块 → 「对照」按钮（词级 diff Modal，纯展示不入台账） */
+  private renderAnswerReviewPrompt(parent: HTMLElement, reply: string): void {
+    const parsed = extractJson<{ answerReview?: Partial<{ before: string; after: string }> }>(reply);
+    const ar = parsed?.answerReview;
+    if (!ar || !ar.before || !ar.after) return;
+
+    const bar = parent.createDiv({ cls: 'asc-logbar' });
+    bar.createSpan({ text: t('answerReview.detected') });
+    bar.createEl('button', { text: t('answerReview.compare'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => {
+      new AnswerReviewModal(this.app, String(ar.before), String(ar.after)).open();
+    });
+  }
+
   /** 概念地图确认卡片：模式 F 章节级画图结果 → 概念登记入台账 */
   private renderConceptMapPrompt(parent: HTMLElement, reply: string): void {
     const cm = parseConceptMap(reply);
@@ -2092,7 +2129,7 @@ export function formatVoiceLogLine(level: 'INFO' | 'WARN' | 'ERROR', stage: stri
 /** 剥离回复里机器用 JSON 块（ieltsResult / sessionTag / wrongAnswer），其他内容原样保留；导出供测试 */
 export function stripMachineBlocks(content: string): string {
   return content
-    .replace(/```json\s*[\s\S]*?```/g, block => (/"ieltsResult"|"sessionTag"|"wrongAnswer"|"conceptMap"|"ieltsSpeaking"|"ieltsExpressions"|"wrongAnswers"/.test(block) ? '' : block))
+    .replace(/```json\s*[\s\S]*?```/g, block => (/"ieltsResult"|"sessionTag"|"wrongAnswer"|"conceptMap"|"ieltsSpeaking"|"ieltsExpressions"|"wrongAnswers"|"answerReview"/.test(block) ? '' : block))
     .replace(/\n{3,}/g, '\n\n')
     .trimEnd();
 }

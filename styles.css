@@ -672,3 +672,12 @@
 .asc-modal input[type="text"] {
   width: 100%;
 }
+
+/* P5a 本地 SVG 图表 */
+.asc-chart-wrap { margin: 6px 0; }
+.asc-chart { display: block; max-width: 100%; }
+
+/* P5b 复盘对照 diff */
+.asc-diff { line-height: 1.9; padding: 10px; border: 1px solid var(--background-modifier-border); border-radius: 6px; }
+.asc-diff-del { color: var(--text-error); text-decoration: line-through; opacity: .8; }
+.asc-diff-add { color: var(--text-success, #34a853); background: rgba(52, 168, 83, .12); border-radius: 3px; }

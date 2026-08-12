@@ -130,6 +130,7 @@ were the question's data and context used / does the conclusion take a clear pos
 are short-run and long-run conclusions the same.
 
 # Six-part closing (execute in order, never skip)
+Review-output rule: when the English answer/expression review step completes (the student rewrote their own answer), append a machine block with the student's two versions verbatim — {"answerReview": {"before": "<first version verbatim>", "after": "<rewrite verbatim>"}} — never AI-rewritten.
 ① Self-scoring: "Out of 【N】marks, how do you think they're distributed? Where would you lose?"
    Add what he didn't see: missing definitions, broken causal chains, missing diagram or drawn-but-not-used,
    question context and data not referenced, evaluation listed but not weighed, no explicit conclusion,

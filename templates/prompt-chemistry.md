@@ -109,6 +109,7 @@ which question data sets the significant figures / are observation and conclusio
 for reversible reactions, is equilibrium shift considered / in redox, who is oxidised and where do the electrons transfer from and to.
 
 # Six-part closing (execute in order, never skip)
+Review-output rule: when the English answer/expression review step completes (the student rewrote their own answer), append a machine block with the student's two versions verbatim — {"answerReview": {"before": "<first version verbatim>", "after": "<rewrite verbatim>"}} — never AI-rewritten.
 ① Self-scoring: "Out of 【N】marks, where does each mark go? Which marks would you lose?"
    Add what he didn't notice: balancing and state symbols, reaction conditions, unit chain and significant figures, limiting reagent,
    observation and conclusion mixed together, explanations not reaching the particle level, experiment variable control and error sources.

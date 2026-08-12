@@ -16,6 +16,8 @@ import * as utVoice from './unit/voice.test';
 import * as utContext from './unit/context.test';
 import * as utProfileL2 from './unit/profileL2.test';
 import * as utReviewSheet from './unit/reviewsheet.test';
+import * as utSvgChart from './unit/svgchart.test';
+import * as utDiff from './unit/diff.test';
 import * as fvtSession from './fvt/session.test';
 import * as fvtDataflow from './fvt/dataflow.test';
 import * as fvtIelts from './fvt/ielts.test';
@@ -38,6 +40,8 @@ async function main(): Promise<void> {
   await utContext.run();
   await utProfileL2.run();
   await utReviewSheet.run();
+  await utSvgChart.run();
+  await utDiff.run();
   await fvtSession.run();
   await fvtDataflow.run();
   await fvtIelts.run();
