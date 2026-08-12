@@ -656,6 +656,7 @@ const en: Dict = {
   'review.sheet.generate': 'Review sheet',
   'review.sheet.stale': 'Review sheet stale — regenerate',
   'review.sheet.done': 'Review sheet generated: {path}',
+  'coach.awaitCards': 'Concluded. Handle the register/ignore cards below — a new session opens automatically once all are handled (click Close problem again to skip).',
 };
 
 const zh: Dict = {
@@ -1305,6 +1306,7 @@ const zh: Dict = {
   'review.sheet.generate': '生成复习单',
   'review.sheet.stale': '复习单已过期，点击重新生成',
   'review.sheet.done': '复习单已生成：{path}',
+  'coach.awaitCards': '结题完成。请先处理下方入库/忽略确认，全部处理后自动续开新会话（再点结题可跳过）。',
 };
 
 let current: Lang = 'en';

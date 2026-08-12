@@ -60,6 +60,8 @@ export class MainView extends ItemView {
   private pendingImages: string[] = [];
   /** 结题请求已发出，回复成功后自动存档并关闭会话 */
   private pendingClose = false;
+  /** 结题回复含未处理入库确认时延迟关闭；再点结题可跳过 */
+  private awaitingClose = false;
   /** 自动开会话防重入标志 */
   private startingSession = false;
   /** 上下文压缩进行中（耗时操作，需明确提示） */
@@ -429,6 +431,12 @@ export class MainView extends ItemView {
       const sessionBtn = bar.createEl('button', { text: t('coach.closeSession'), cls: 'asc-btn' });
       sessionBtn.setAttr('title', t('coach.closeSession.title'));
       sessionBtn.addEventListener('click', () => {
+        if (this.awaitingClose) {
+          // 再点结题：跳过未处理确认，直接存档关闭
+          this.awaitingClose = false;
+          void this.closeSession();
+          return;
+        }
         this.pendingClose = true; // 结题回复完成后自动存档并关闭会话
         void this.send(CLOSE_PROMPT);
       });
@@ -932,10 +940,16 @@ export class MainView extends ItemView {
       }
       if (!raw.trim()) throw new Error(t('coach.emptyReply'));
       this.messages.push({ role: 'assistant', content: raw });
-      // 结题回复完成：存档并关闭会话（下次切回本科目将新开会话）
+      // 结题回复完成：先渲染入库确认卡片；有未处理确认则延迟关闭，否则存档并关闭会话
       if (this.pendingClose) {
         this.pendingClose = false;
-        await this.closeSession();
+        this.render();
+        if (this.bodyEl.querySelectorAll('.asc-confirm-bar').length > 0) {
+          this.awaitingClose = true;
+          new Notice(t('coach.awaitCards'), 10000);
+        } else {
+          await this.closeSession();
+        }
         return;
       }
       await this.handleReplySideEffects(raw);
@@ -948,6 +962,7 @@ export class MainView extends ItemView {
       new Notice(t('coach.requestFail', { msg: e instanceof Error ? e.message : String(e) }), 10000);
       this.messages.pop(); // 撤回未成功的用户消息，方便重试
       this.pendingClose = false;
+      this.awaitingClose = false;
     } finally {
       waiting = false;
       window.clearInterval(waitTicker);
@@ -1092,6 +1107,14 @@ export class MainView extends ItemView {
     return true;
   }
 
+  /** 结题后入库确认全部处理完 → 自动续开新会话 */
+  private maybeFinishClose(): void {
+    if (!this.awaitingClose) return;
+    if (this.bodyEl.querySelectorAll('.asc-confirm-bar').length > 0) return;
+    this.awaitingClose = false;
+    void this.closeSession();
+  }
+
   /** 结题后关闭会话：存档 + 清空状态（历史可通过「历史」按钮找回） */
   private async closeSession(): Promise<void> {
     await this.archiveIfNeeded(true);
@@ -1136,7 +1159,7 @@ export class MainView extends ItemView {
     const rows = this.plugin.errorLog.parseAiRows(last.content);
     if (!rows.length) return;
 
-    const bar = parent.createDiv({ cls: 'asc-logbar' });
+    const bar = parent.createDiv({ cls: 'asc-logbar asc-confirm-bar' });
     bar.createSpan({ text: t('logbar.detected', { n: rows.length }) });
     for (const r of rows) {
       bar.createDiv( { text: `【${r.subject}】${r.topic} · ${r.code} · ${r.desc ?? ''}`, cls: 'asc-logrow' });
@@ -1158,9 +1181,10 @@ export class MainView extends ItemView {
         new Notice(t('logbar.added', { n: ok }));
         void this.plugin.refreshStatusBar();
         bar.remove();
+        this.maybeFinishClose();
       })();
     });
-    btns.createEl('button', { text: t('common.ignore'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
+    btns.createEl('button', { text: t('common.ignore'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => { bar.remove(); this.maybeFinishClose(); });
   }
 
   /** 教练雅思会话：检测回复里的批改结果 JSON → 确认卡片，分数进台账、表达进积累库 */
@@ -1169,7 +1193,7 @@ export class MainView extends ItemView {
     const s = parsed.scores;
     if (s.overall === null) return;
 
-    const bar = parent.createDiv({ cls: 'asc-logbar' });
+    const bar = parent.createDiv({ cls: 'asc-logbar asc-confirm-bar' });
     const fmt = (v: number | null) => (v === null ? '-' : String(v));
     // 来源：有引用文档则精确到 vault 文档路径，否则才是「教练会话」（直接贴作文时）
     const source = this.attachments.length ? this.attachments[this.attachments.length - 1].path : t('coach.sessionDirect');
@@ -1191,13 +1215,14 @@ export class MainView extends ItemView {
             : 0;
           new Notice(t('ielts.registered', { exprs: added ? t('ielts.registered.exprs', { n: added }) : '' }));
           bar.remove();
+          this.maybeFinishClose();
         } catch (e) {
           new Notice(t('wrong.addFail', { msg: e instanceof Error ? e.message : String(e) }), 8000);
           (ev.target as HTMLElement).removeAttribute('disabled');
         }
       })();
     });
-    btns.createEl('button', { text: t('common.ignore'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
+    btns.createEl('button', { text: t('common.ignore'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => { bar.remove(); this.maybeFinishClose(); });
   }
 
   /** 订正会话：检测回复里的错题 JSON → 确认卡片，入错题本台账 */
@@ -1206,7 +1231,7 @@ export class MainView extends ItemView {
     const w = parsed?.wrongAnswer;
     if (!w || !w.topic) return;
 
-    const bar = parent.createDiv({ cls: 'asc-logbar' });
+    const bar = parent.createDiv({ cls: 'asc-logbar asc-confirm-bar' });
     bar.createSpan({ text: t('wrong.detected', { subject: w.subject ?? '-', topic: w.topic, code: w.code ?? '-', status: w.status === '未订正' ? t('wrong.detected.open') : t('wrong.detected.fixed') }) });
     bar.createDiv( { text: t('wrong.myError', { e: w.myError ?? '-', a: w.answerSource ?? t('wrong.answerPending') }), cls: 'asc-logrow' });
     const btns = bar.createDiv();
@@ -1221,13 +1246,14 @@ export class MainView extends ItemView {
           });
           new Notice(entry ? t('wrong.added', { id: entry.id, status: entry.status === '未订正' ? t('wrong.added.open') : '' }) : t('wrong.dup'));
           bar.remove();
+          this.maybeFinishClose();
         } catch (e) {
           new Notice(t('wrong.addFail', { msg: e instanceof Error ? e.message : String(e) }), 8000);
           (ev.target as HTMLElement).removeAttribute('disabled');
         }
       })();
     });
-    btns.createEl('button', { text: t('common.ignore'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
+    btns.createEl('button', { text: t('common.ignore'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => { bar.remove(); this.maybeFinishClose(); });
   }
 
   /** 口语训练：检测终训评分/表达/错题机器块 → 确认卡片一次入库三处（口语台账/表达库/错题本） */
@@ -1237,7 +1263,7 @@ export class MainView extends ItemView {
     const wrongs = parseSpeakingWrongs(reply);
     if (!finals.length && !exprs.length && !wrongs.length) return;
 
-    const bar = parent.createDiv({ cls: 'asc-logbar' });
+    const bar = parent.createDiv({ cls: 'asc-logbar asc-confirm-bar' });
     if (finals.length) {
       const s = finals[finals.length - 1];
       bar.createSpan({
@@ -1277,13 +1303,14 @@ export class MainView extends ItemView {
           }
           new Notice(msgs.length ? t('speaking.registered', { list: msgs.join('，') }) : t('wrong.dup'));
           bar.remove();
+          this.maybeFinishClose();
         } catch (e) {
           new Notice(t('wrong.addFail', { msg: e instanceof Error ? e.message : String(e) }), 8000);
           (ev.target as HTMLElement).removeAttribute('disabled');
         }
       })();
     });
-    row.createEl('button', { text: t('common.ignore'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
+    row.createEl('button', { text: t('common.ignore'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => { bar.remove(); this.maybeFinishClose(); });
   }
 
   /** 口语训练：按句合成并播报 AI 回复（可打断；失败不影响文字流） */
@@ -1955,7 +1982,7 @@ export class MainView extends ItemView {
     const cm = parseConceptMap(reply);
     if (!cm || !cm.concepts.length) return;
 
-    const bar = parent.createDiv({ cls: 'asc-logbar' });
+    const bar = parent.createDiv({ cls: 'asc-logbar asc-confirm-bar' });
     bar.createSpan({ text: t('conceptmap.detected', { subject: cm.subject ?? '-', chapter: cm.chapter ?? '-', n: cm.concepts.length }) });
     for (const c of cm.concepts) {
       bar.createDiv( { text: t('conceptmap.item', { mark: c.status === '已学' ? '✓' : '◌', name: c.name, status: statusLabel(c.status) }), cls: 'asc-logrow' });
@@ -1971,13 +1998,14 @@ export class MainView extends ItemView {
           const pending = cm.concepts.filter(c => c.status !== '已学').length;
           new Notice(t('conceptmap.registered', { n: cm.concepts.length, pending: pending ? t('conceptmap.pending', { n: pending }) : '' }));
           bar.remove();
+          this.maybeFinishClose();
         } catch (e) {
           new Notice(t('conceptmap.fail', { msg: e instanceof Error ? e.message : String(e) }), 8000);
           (ev.target as HTMLElement).removeAttribute('disabled');
         }
       })();
     });
-    btns.createEl('button', { text: t('common.ignore'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => bar.remove());
+    btns.createEl('button', { text: t('common.ignore'), cls: 'asc-btn asc-btn-small' }).addEventListener('click', () => { bar.remove(); this.maybeFinishClose(); });
   }
 
   /** 出变式题：跳到教练页签，用对应科目开会话并预填请求 */
