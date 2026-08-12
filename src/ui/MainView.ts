@@ -27,7 +27,7 @@ import { oxbridgeGuidance } from '../services/ReportService';
 import type { ImagePart } from '../types';
 import { ContextCompressor } from '../services/ContextCompressor';
 import { estimateTokens, formatTokens } from '../utils/tokens';
-import { sparkline, bars, mountSvg } from '../utils/svgChart';
+import { mountSparkline, mountBars } from '../utils/svgChart';
 import { AnswerReviewModal } from './AnswerReviewModal';
 
 export const VIEW_TYPE = 'alevel-study-coach-view';
@@ -1549,7 +1549,7 @@ export class MainView extends ItemView {
       const topCodes = [...codeCounts.entries()].sort((x, y) => y[1] - x[1]).slice(0, 8);
       if (topCodes.length) {
         b1.createDiv({ text: t('records.chart.codes'), cls: 'asc-muted' });
-        mountSvg(b1.createDiv({ cls: 'asc-chart-wrap' }), bars(topCodes));
+        mountBars(b1.createDiv({ cls: 'asc-chart-wrap' }), topCodes);
       }
       const tableWrap = b1.createDiv({ cls: 'asc-table-wrap' });
       const draw = () => {
@@ -1599,7 +1599,7 @@ export class MainView extends ItemView {
         const trend = scores.map(s => s.overall).filter((v): v is number => v !== null);
         if (trend.length >= 2) {
           b2.createDiv({ text: t('records.chart.ielts'), cls: 'asc-muted' });
-          mountSvg(b2.createDiv({ cls: 'asc-chart-wrap' }), sparkline(trend));
+          mountSparkline(b2.createDiv({ cls: 'asc-chart-wrap' }), trend);
         }
       }
     }
@@ -1708,7 +1708,7 @@ export class MainView extends ItemView {
         const spTrend = sps.map(s => parseFloat(s.overall)).filter(v => Number.isFinite(v));
         if (spTrend.length >= 2) {
           b7.createDiv({ text: t('records.chart.speaking'), cls: 'asc-muted' });
-          mountSvg(b7.createDiv({ cls: 'asc-chart-wrap' }), sparkline(spTrend));
+          mountSparkline(b7.createDiv({ cls: 'asc-chart-wrap' }), spTrend);
         }
       }
     }
