@@ -54,7 +54,7 @@ export class ErrorLogService {
    * 入库：先查复发（同科目+考点+代码），复发则更新原行，否则追加新行。
    * 返回实际落库的条目。
    */
-  async addEntry(partial: Partial<ErrorLogEntry>): Promise<AddResult | null> {
+  async addEntry(partial: Partial<ErrorLogEntry>, fallbackSubject = ''): Promise<AddResult | null> {
     const content = await this.vault.read(LOG_PATH);
     if (!content) return null;
     if (await this.vault.hasConflict(LOG_PATH)) {
@@ -64,7 +64,9 @@ export class ErrorLogService {
     const entries = this.parseEntries(content);
     const topicKey = (partial.topic ?? '').trim().toLowerCase();
     const codeKey = (partial.code ?? '').trim().toUpperCase();
-    const subjectKey = (partial.subject ?? '').trim();
+    // 科目规范化：AI 可能把考点名填进科目列或省略——白名单+别名校验，不合法回退会话科目
+    const subjectKey = normalizeSubject(partial.subject, fallbackSubject);
+    if (!topicKey || !subjectKey) return null;
     const existing = entries.find(
       e => e.topic.trim().toLowerCase() === topicKey && e.code.trim().toUpperCase() === codeKey && e.subject === subjectKey,
     );
@@ -210,6 +212,20 @@ export class ErrorLogService {
     );
     return [header, sep, ...rows].join('\n');
   }
+}
+
+/** 失分台账科目白名单（最多精确到科目/章节，不填考点名） */
+export const LOG_SUBJECTS = ['Maths', 'Physics', 'Chem', 'CS', 'Econ', 'IELTS'];
+const SUBJECT_ALIASES: Record<string, string> = {
+  math: 'Maths', mathematics: 'Maths', chemistry: 'Chem', economics: 'Econ',
+  'computer science': 'CS', ielts: 'IELTS', '雅思': 'IELTS', '雅思口语': 'IELTS', '雅思写作': 'IELTS',
+};
+
+/** 科目规范化：白名单+别名匹配；不合法（如填了考点名）回退 fallback（会话科目） */
+export function normalizeSubject(s: string | undefined, fallback: string): string {
+  const key = (s ?? '').trim().toLowerCase();
+  const hit = LOG_SUBJECTS.find(x => x.toLowerCase() === key) ?? SUBJECT_ALIASES[key];
+  return hit ?? (fallback || (s ?? '').trim());
 }
 
 function daysOverdue(reviewDate: string, today: string): number {

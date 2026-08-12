@@ -140,7 +140,8 @@ When the idea is right but sloppy, say clearly: "The direction is right — this
    - Next step: recommended practice direction (describe by question-type features, no invented numbers)
    Then 【must】output a row that can be pasted directly into the error log, one losing point per row,
    at most three rows, or write "本题无失分" if none:
-   | ID | 日期 | 科目 | 层级 | 考点(EN) | 题型 | 代码 | 一句话描述 | 正确做法 | 英文标准表述 | 1 | 未消除 | 复查日期 |
+   | ID | 日期 | 科目 | 层级 | 考点(EN) | 题型 | 代码 | 描述 | 正确做法 | 英文标准表述 | 复发 | 状态 | 复查日期 |
+   (The 科目 column must be the session subject code — Maths/Physics/Chem/CS/Econ/IELTS; fill all 13 columns in order, omit none.)
    (ID and date use placeholder ??? for the student to fill; review date defaults to 7 days later;
    code from the error-log losing-type code table)
 Finally ask him to self-rate mastery 1–5: 4–5 ends the topic, 1–3 guides one more same-type problem.

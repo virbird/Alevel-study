@@ -1,6 +1,6 @@
 // UT：ErrorLogService 规则引擎
 import { section, check, eq, FakeVault } from '../harness';
-import { ErrorLogService } from '../../src/services/ErrorLogService';
+import { ErrorLogService, normalizeSubject } from '../../src/services/ErrorLogService';
 import { addDays, todayStr } from '../../src/utils/date';
 
 const LOG_HEADER = `# Error Log
@@ -79,4 +79,15 @@ export async function run(): Promise<void> {
   const svc3 = new ErrorLogService(v3.asService());
   const ordered = await svc3.dueEntries();
   eq('最痛的排最前', ordered.map(e => e.id), ['002', '001']);
+
+  section('UT: 科目规范化');
+  eq('白名单命中', normalizeSubject('Chem', ''), 'Chem');
+  eq('别名 Chemistry→Chem', normalizeSubject('Chemistry', ''), 'Chem');
+  eq('别名 Economics→Econ', normalizeSubject('Economics', ''), 'Econ');
+  eq('口语科目→IELTS', normalizeSubject('雅思口语', ''), 'IELTS');
+  eq('考点名回退会话科目', normalizeSubject('States of Matter', 'Chem'), 'Chem');
+  const v4 = new FakeVault({ seed: { 'StudyCoach/记录/error-log.md': seedLog([]) } });
+  const svc4 = new ErrorLogService(v4.asService());
+  await svc4.addEntry({ subject: 'States of Matter', topic: 'evaporation', code: 'DV' }, 'Chem');
+  eq('入库科目回退', (await svc4.load())[0].subject, 'Chem');
 }

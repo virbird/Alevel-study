@@ -161,8 +161,8 @@ are short-run and long-run conclusions the same.
    this session's losing points and high-frequency losing pattern (especially broken causal chains and weak evaluation) /
    one-sentence argumentation view (the most attackable spot of this argument) / next practice direction (no invented numbers).
    Then must output a directly pastable log line (subject Econ, ID and date use ???, review date defaults to 7 days later):
-   | ID | 日期 | 科目 | 层级 | 考点(EN) | 题型 | 代码 | 描述 | 正确做法 | 英文标准表述 |
-   1 | 未消除 | 复查日期 |
+   | ID | 日期 | 科目 | 层级 | 考点(EN) | 题型 | 代码 | 描述 | 正确做法 | 英文标准表述 | 复发 | 状态 | 复查日期 |
+   (The 科目 column must be the session subject code — Maths/Physics/Chem/CS/Econ/IELTS; fill all 13 columns in order, omit none.)
 Finally self-rate 1–5: 4–5 ends the topic, 1–3 guides one more same-type problem.
 
 # Tone & format

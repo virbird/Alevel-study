@@ -1169,9 +1169,10 @@ export class MainView extends ItemView {
       void (async () => {
         (ev.target as HTMLElement).setAttr('disabled', 'true');
         let ok = 0;
+        const fb = this.mode === 'ielts' || this.mode === 'speaking' ? 'IELTS' : (SUBJECTS.find(s => s.key === this.mode)?.logName ?? '');
         for (const r of rows) {
           try {
-            const res = await this.plugin.errorLog.addEntry(r);
+            const res = await this.plugin.errorLog.addEntry(r, fb);
             if (res) ok++;
           } catch (e) {
             new Notice(t('logbar.addFail', { msg: e instanceof Error ? e.message : String(e) }), 8000);
@@ -1534,7 +1535,7 @@ export class MainView extends ItemView {
       const bar = b1.createDiv({ cls: 'asc-row' });
       const subjectSel = bar.createEl('select', { cls: 'asc-select' });
       subjectSel.createEl('option', { text: t('records.allSubjects'), value: '' });
-      for (const s of ['Maths', 'Physics', 'Chem', 'CS', 'Econ']) subjectSel.createEl('option', { text: s, value: s });
+      for (const s of ['Maths', 'Physics', 'Chem', 'CS', 'Econ', 'IELTS']) subjectSel.createEl('option', { text: s, value: s });
       const statusSel = bar.createEl('select', { cls: 'asc-select' });
       statusSel.createEl('option', { text: t('records.allStatus'), value: '' });
       for (const s of ['未消除', '观察中', '已消除']) statusSel.createEl('option', { text: statusLabel(s), value: s });
@@ -1838,6 +1839,7 @@ export class MainView extends ItemView {
       for (const e of due) {
         const item = b1.createDiv({ cls: 'asc-queue-item' });
         item.createDiv( { text: t('review.points.item', { id: e.id, subject: e.subject, topic: e.topic, code: e.code, n: e.recurrence }), cls: 'asc-card-title' });
+        item.createDiv( { text: t('review.points.meta', { qtype: e.qtype || '-', level: e.level || '-' }), cls: 'asc-row asc-muted' });
         const pbadge = progressBadge('log', e.status);
         if (pbadge) item.createDiv( { text: pbadge, cls: 'asc-row asc-muted' });
         item.createDiv( { text: e.desc, cls: 'asc-row' });
