@@ -1,6 +1,6 @@
 import { ItemView, MarkdownRenderer, Notice, Platform, TFile, WorkspaceLeaf } from 'obsidian';
 import type ALevelStudyCoachPlugin from '../main';
-import { t, statusLabel, modeLabel, kindLabel } from '../i18n';
+import { t, statusLabel, modeLabel, kindLabel, subjectLabel } from '../i18n';
 import { SUBJECTS } from '../types';
 import type { ChatMessage, ErrorLogEntry, ModeKey, SessionTag } from '../types';
 import { extractJson } from '../llm/LlmClient';
@@ -400,13 +400,13 @@ export class MainView extends ItemView {
     const select = bar.createEl('select', { cls: 'asc-select asc-subject-select' });
     for (const s of SUBJECTS) {
       // option 用全名：展开下拉时可见全名；收起时由 CSS 宽度截断为前几个字
-      select.createEl('option', { text: s.label, value: s.key });
+      select.createEl('option', { text: subjectLabel(s.key), value: s.key });
     }
     select.value = this.mode;
-    select.setAttr('title', SUBJECTS.find(s => s.key === this.mode)?.label ?? '');
+    select.setAttr('title', subjectLabel(this.mode));
     select.addEventListener('change', () => {
       const target = select.value as ModeKey;
-      select.setAttr('title', SUBJECTS.find(s => s.key === target)?.label ?? '');
+      select.setAttr('title', subjectLabel(target));
       // 会话按科目隔离：切科目 = 存当前会话 → 恢复目标科目会话（无则新开）
       void this.switchMode(target).then(ok => {
         if (!ok) select.value = this.mode; // 切换被拒（回复中）：下拉回退

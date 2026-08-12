@@ -608,6 +608,34 @@ const en: Dict = {
   'insight.overdue.ev1': 'Most painful ones: {list}',
   'insight.overdue.item': '{topic} (recurred {n}×)',
   'insight.overdue.ev2': 'Suggestion: no need to clear all — handle the 3 most painful first (the Review tab already sorts by recurrence × overdue)',
+  'prompt.tagInstruction': '\n\n════════ Plugin integration instructions (appended by the A-Level Study Coach plugin; priority equal to the highest principles) ════════\n1. Whenever a session reaches the closing stage (the closing flow is completed, or the student explicitly ends the current request), append at the end of the reply an extra JSON code block as the session tag, in the following format (field values may be Chinese or English terms):\n```json\n{ "sessionTag": { "subject": "subject name", "topic": "topic name in English", "confusion": "concept not understood|knows but not fluent|stuck at a step|term expression|essay grading|other", "depth": "understands after one hint|needs full guidance" } }\n```\n2. This tag is for the plugin\'s weakness statistics; do not explain it to the student, and do not change your teaching style because of outputting it.\n3. When outputting the log line at closing, strictly follow the table format in the prompt (13 columns), one line per mark-loss point.',
+  'prompt.inject.profile': 'Plugin injection: student profile',
+  'prompt.today': 'Today is {date}.',
+  'prompt.inject.unresolved': 'Plugin injection: currently unresolved mark-loss records',
+  'prompt.unresolved.usage': 'Use this information as the prompt requires (codes recurring 3+ times outrank the problem itself).',
+  'prompt.noUnresolved': 'There are currently no unresolved mark-loss records.',
+  'prompt.inject.focus': 'Plugin injection: current special focus (derived from relapse-hotspot statistics, in force for this whole session)',
+  'prompt.inject.progress': 'Plugin injection: recent learning progress',
+  'prompt.inject.impressions': 'Plugin injection: student self-reported weaknesses (impressions to verify, not diagnosed conclusions)',
+  'prompt.impressions.usage': 'Usage: these are the student\'s own vague feelings with no concrete evidence yet. Do not treat them as diagnosed weaknesses and keep bringing them up; when a related problem appears you may verify casually (e.g. ask how he feels about this direction) and observe whether there is real difficulty.',
+  'prompt.inject.practice': 'Plugin injection: practice focus (student-confirmed question-type / answer-habit tendencies)',
+  'prompt.practice.usage': 'Usage: these are confirmed habitual tendencies, not impressions to verify. When the corresponding question type appears, actively strengthen the relevant checks: e.g. for experiment questions reinforce variable-control and error-analysis structure, for short-answer questions reinforce English-answer review and point-count checks, and for colloquial tendencies strictly execute the three-step term interception. At closing, prefer observing whether the habit reappears; if it does, record the corresponding mark-loss code.',
+  'prompt.cols.unresolved': 'ID|Subject|Level|Topic (EN)|Code|One-line description|Recurrence|Review date',
+  'prompt.sum.template': 'template {file}',
+  'prompt.sum.unresolved': 'unresolved {n}',
+  'prompt.sum.progressYes': 'with recent progress',
+  'prompt.sum.progressNo': 'no progress record',
+  'prompt.sum.focus': 'with current special focus',
+  'prompt.sum.impressions': 'weak impressions {n}',
+  'prompt.sum.practice': 'practice focus {n}',
+  'prompt.sum.docs': 'reference docs {n}',
+  'profile.header': 'Student profile (auto-injected by the plugin; updated by the plugin before each session):',
+  'profile.stage': '- Current stage: {v}',
+  'profile.subject': '- {key}: {level}, emphasis {bias}, target {target}{extra}',
+  'profile.subject.lang': ', programming language {v}',
+  'profile.ielts': '- IELTS target: {target} (main focus {focus})',
+  'profile.oxbridge': '- Oxbridge direction: {direction} (expand only when the student shows interest on his own)',
+  'profile.independent': '- Independent-thinking threshold: {n} minutes',
 };
 
 const zh: Dict = {
@@ -1209,6 +1237,34 @@ const zh: Dict = {
   'insight.overdue.ev1': '最痛的几条：{list}',
   'insight.overdue.item': '{topic}（复发 {n}）',
   'insight.overdue.ev2': '建议：不必全清，先处理最痛的 3 条（复习页签已按复发×逾期排序）',
+  'prompt.tagInstruction': '\n\n════════ 插件集成指令（由 A-Level Study Coach 插件追加，优先级等同最高原则）════════\n1. 每次会话到达结题环节（完成结题流程、或学生明确结束本次求助）时，在回复末尾额外输出一个 JSON 代码块作为会话标签，格式如下（字段值用中文或英文术语均可）：\n```json\n{ "sessionTag": { "subject": "科目名", "topic": "考点英文名", "confusion": "概念不懂|会但不熟|卡在某步|术语表达|作文批改|其他", "depth": "问一句就懂|需要完整引导" } }\n```\n2. 该标签供插件统计弱点，不要向学生解释它，也不要因为输出它而改变你的教学方式。\n3. 结题输出 log 行时严格遵守提示词中的表格格式（13 列），一个失分点一行。',
+  'prompt.inject.profile': '插件注入：学生档案',
+  'prompt.today': '今天是 {date}。',
+  'prompt.inject.unresolved': '插件注入：当前未消除的失分记录',
+  'prompt.unresolved.usage': '按提示词要求使用这些信息（复发 3 次以上的代码优先级高于题目本身）。',
+  'prompt.noUnresolved': '当前没有未消除的失分记录。',
+  'prompt.inject.focus': '插件注入：本期专项（复发热点统计得出，本轮会话全程执行）',
+  'prompt.inject.progress': '插件注入：最近学习进展',
+  'prompt.inject.impressions': '插件注入：学生自述弱项（待验证的印象，非确诊结论）',
+  'prompt.impressions.usage': '使用方式：这是学生自己的模糊感觉，尚无具体证据。不要当成确诊弱点反复提；遇到相关题目时可顺带验证（例如问他这个方向感觉如何），观察是否真有困难。',
+  'prompt.inject.practice': '插件注入：练习侧重（学生已确认的题型/作答习惯倾向）',
+  'prompt.practice.usage': '使用方式：这些是已确认的习惯性倾向，不是待验证印象。遇到对应题型时主动加强相应审查：例如实验题强化变量控制与误差分析结构、问答题强化英文作答审查与要点数量检查、口语化倾向则严格执行术语拦截三步。结题时优先观察该习惯是否再现，再现则记对应失分代码。',
+  'prompt.cols.unresolved': 'ID|科目|层级|考点(EN)|代码|一句话描述|复发|复查日期',
+  'prompt.sum.template': '模板 {file}',
+  'prompt.sum.unresolved': '未消除 {n} 条',
+  'prompt.sum.progressYes': '含最近进展',
+  'prompt.sum.progressNo': '暂无进展记录',
+  'prompt.sum.focus': '含本期专项',
+  'prompt.sum.impressions': '待验证弱项 {n} 条',
+  'prompt.sum.practice': '练习侧重 {n} 条',
+  'prompt.sum.docs': '引用文档 {n} 份',
+  'profile.header': '学生档案（插件自动注入，每次会话前由插件更新） ：',
+  'profile.stage': '- 当前阶段：{v}',
+  'profile.subject': '- {key}：{level}，偏重 {bias}，目标 {target}{extra}',
+  'profile.subject.lang': '，编程语言 {v}',
+  'profile.ielts': '- 雅思目标：{target}（主攻 {focus}）',
+  'profile.oxbridge': '- 牛剑方向：{direction}（仅在学生主动表示兴趣时展开）',
+  'profile.independent': '- 独立思考门槛：{n} 分钟',
 };
 
 let current: Lang = 'en';
@@ -1279,5 +1335,22 @@ const KIND_LABELS: Record<string, [string, string]> = {
 export function kindLabel(v: string): string {
   const pair = KIND_LABELS[v];
   if (!pair) return v;
+  return current === 'zh' ? pair[1] : pair[0];
+}
+
+/** 科目/模式名的显示翻译（教练页签科目下拉等，随语言设置） */
+const SUBJECT_LABELS: Record<string, [string, string]> = {
+  Maths: ['Maths', '数学'],
+  Physics: ['Physics', '物理'],
+  Chemistry: ['Chemistry', '化学'],
+  CS: ['CS', '计算机'],
+  Economics: ['Economics', '经济'],
+  drill: ['Concept drill (term training)', '概念精练（术语训练）'],
+  ielts: ['IELTS writing (grade / review / discuss)', '雅思写作训练（批改/点评/讨论）'],
+  speaking: ['IELTS speaking (mock / sparring / discuss)', '雅思口语训练（模考/陪练/讨论）'],
+};
+export function subjectLabel(key: string): string {
+  const pair = SUBJECT_LABELS[key];
+  if (!pair) return key;
   return current === 'zh' ? pair[1] : pair[0];
 }

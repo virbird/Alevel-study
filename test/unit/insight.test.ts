@@ -115,7 +115,7 @@ export async function run(): Promise<void> {
   const built = await assembler.buildSystemPrompt('Maths');
   check('模板缺失时返回 null', (await assembler.buildSystemPrompt('Chemistry')) === null);
   check('注入模板正文', built!.prompt.includes('数学教练模板正文'));
-  check('注入学生档案', built!.prompt.includes('学生档案'));
+  check('注入学生档案', built!.prompt.includes('Student profile'));
   check('注入未消除失分行', built!.prompt.includes('Quadratic inequalities'));
   check('注入最近进展', built!.prompt.includes('学到 differentiation'));
   check('注入本期专项', built!.prompt.includes('练定义'));
@@ -123,7 +123,7 @@ export async function run(): Promise<void> {
   check('科目过滤：Maths 会话注入 Maths 印象', built!.prompt.includes('统计几何薄弱'));
   check('科目过滤：不注入 Econ 印象', !built!.prompt.includes('宏观模糊'));
   check('科目过滤：注入 Maths 练习侧重', built!.prompt.includes('证明跳步'));
-  check('摘要含计数', built!.summary.includes('未消除 1 条') && built!.summary.includes('含本期专项'));
+  check('摘要含计数', built!.summary.includes('unresolved 1') && built!.summary.includes('with current special focus'));
   const physBuilt = await assembler.buildSystemPrompt('Physics');
   check('其他科目不注入 Maths 印象', !physBuilt!.prompt.includes('统计几何薄弱'));
   const ieltsBuilt = await assembler.buildSystemPrompt('ielts');

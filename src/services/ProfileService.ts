@@ -1,6 +1,7 @@
 import type { Profile, SubjectKey } from '../types';
 import { parseFrontmatter, stringifyFrontmatter } from '../utils/markdown';
 import { VaultService, ROOT } from './VaultService';
+import { t } from '../i18n';
 
 const PROFILE_PATH = `${ROOT}/档案.md`;
 
@@ -76,17 +77,17 @@ export class ProfileService {
 
   /** 注入教练 prompt 的学生档案段 */
   formatForInjection(profile: Profile): string {
-    const lines: string[] = ['学生档案（插件自动注入，每次会话前由插件更新）：'];
-    lines.push(`- 当前阶段：${profile.stage}`);
+    const lines: string[] = [t('profile.header')];
+    lines.push(t('profile.stage', { v: profile.stage }));
     for (const [key, sp] of Object.entries(profile.subjects)) {
       if (!sp) continue;
-      lines.push(`- ${key}：${sp.level}，偏重 ${sp.bias}，目标 ${sp.target}${sp.language ? `，编程语言 ${sp.language}` : ''}`);
+      lines.push(t('profile.subject', { key, level: sp.level, bias: sp.bias, target: sp.target, extra: sp.language ? t('profile.subject.lang', { v: sp.language }) : '' }));
     }
-    lines.push(`- 雅思目标：${profile.ielts.target}（主攻 ${profile.ielts.focus}）`);
+    lines.push(t('profile.ielts', { target: profile.ielts.target, focus: profile.ielts.focus }));
     if (profile.oxbridge.enabled) {
-      lines.push(`- 牛剑方向：${profile.oxbridge.direction}（仅在学生主动表示兴趣时展开）`);
+      lines.push(t('profile.oxbridge', { direction: profile.oxbridge.direction }));
     }
-    lines.push(`- 独立思考门槛：${profile.independent_minutes} 分钟`);
+    lines.push(t('profile.independent', { n: profile.independent_minutes }));
     return lines.join('\n');
   }
 }
