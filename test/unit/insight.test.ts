@@ -63,6 +63,7 @@ export async function run(): Promise<void> {
   check('复发仅 1 次不触发', engine.calibrationFlags(overTags, eOver.slice(0, 1)).length === 0);
   check('样本 2 条不触发', engine.calibrationFlags(overTags.slice(0, 2), eOver).length === 0);
   check('考点名大小写不敏感关联', engine.calibrationFlags([mkTag('5', 'elasticity'), mkTag('4', 'ELASTICITY'), mkTag('4')], eOver).length === 1);
+  check('考点名含不换行空格（U+A0）仍可关联', engine.calibrationFlags([mkTag('5', 'Elasticity of demand'), mkTag('4', 'Elasticity\u00a0of demand'), mkTag('4', 'Elasticity of\u00a0demand')], [mkEntry({ code: 'E', topic: 'Elasticity of demand' }), mkEntry({ id: '002', code: 'E', topic: 'Elasticity of demand' })]).length === 1);
   const fUnder = engine.calibrationFlags([mkTag('2', 'Taxation'), mkTag('1', 'Taxation'), mkTag('2', 'Taxation')], [mkEntry({ code: 'X', topic: 'Taxation' })]);
   check('自评低+无复发→低估（仅展示）', fUnder.length === 1 && fUnder[0].kind === 'under');
   check('无效自评（空/越界）忽略', engine.calibrationFlags([mkTag(''), mkTag('9'), mkTag('abc')], eOver).length === 0);

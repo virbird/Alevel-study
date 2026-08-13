@@ -6,6 +6,11 @@ import { QUESTION_LOG_PATH } from './QuestionLogService';
 import type { VaultService } from './VaultService';
 import { t } from '../i18n';
 
+/** 考点名规范化：AI 产出的 JSON 常带不换行空格（U+A0）等空白变体，归一为单空格后再比较 */
+function normTopic(s: string): string {
+  return s.replace(/[\u00a0\u2007\u202f]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
 export interface QuestionTagRow {
   date: string;
   subject: string;
@@ -64,7 +69,7 @@ export class InsightEngine {
     if (!content) return [];
     return parseTable(content)
       .filter(r => r.length >= 5 && r[0] !== '日期' && parseDate(r[0]))
-      .map(r => ({ date: r[0], subject: r[1], topic: r[2], confusion: r[3], depth: r[4], selfRating: r[5] ?? '' }));
+      .map(r => ({ date: r[0], subject: r[1], topic: (r[2] ?? '').replace(/\u00a0/g, ' '), confusion: r[3], depth: r[4], selfRating: r[5] ?? '' }));
   }
 
   private withinDays(date: string, days: number): boolean {
@@ -123,7 +128,7 @@ export class InsightEngine {
     for (const tag of tags) {
       const n = Number(tag.selfRating);
       if (!tag.selfRating || !Number.isFinite(n) || n < 1 || n > 5 || !tag.topic) continue;
-      const hit = entries.find(e => e.topic && e.topic.trim().toLowerCase() === tag.topic.trim().toLowerCase());
+      const hit = entries.find(e => e.topic && normTopic(e.topic) === normTopic(tag.topic));
       if (!hit || !hit.code) continue;
       const key = hit.code.toUpperCase();
       const cur = byCode.get(key) ?? { ratings: [], dates: [], subjects: new Map<string, number>() };
