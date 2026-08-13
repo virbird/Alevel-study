@@ -1,5 +1,5 @@
 // 本周三件事（Q3）：纯本地选取——到期失分前 2 + 最旧未订正错题 1，不足按池序补齐，全空不渲染
-import type { ErrorLogEntry } from '../services/ErrorLogService';
+import type { ErrorLogEntry } from '../types';
 import type { WrongAnswerEntry } from '../services/WrongAnswerService';
 import { daysBetween, todayStr } from './date';
 

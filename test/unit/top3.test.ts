@@ -1,7 +1,7 @@
 // UT：pickTop3 本周三件事选取规则
 import { section, eq } from '../harness';
 import { pickTop3 } from '../../src/utils/top3';
-import type { ErrorLogEntry } from '../../src/services/ErrorLogService';
+import type { ErrorLogEntry } from '../../src/types';
 import type { WrongAnswerEntry } from '../../src/services/WrongAnswerService';
 
 const mkLog = (id: string, recurrence: number): ErrorLogEntry => ({
