@@ -75,8 +75,9 @@ export async function run(): Promise<void> {
     'StudyCoach/记录/提问记录.md': '# 提问记录\n\n| 日期 | 科目 | 考点(EN) | 困惑类型 | 求助深度 |\n|------|------|---------|---------|---------|\n',
   } });
   const ql = new QuestionLogService(v4.asService());
-  await ql.appendTag({ date: todayStr(), subject: 'Physics', topic: 'Moments', confusion: '卡在某步', depth: '问一句就懂' });
+  await ql.appendTag({ date: todayStr(), subject: 'Physics', topic: 'Moments', confusion: '卡在某步', depth: '问一句就懂', selfRating: '4' });
   check('提问记录追加一行', v4.files['StudyCoach/记录/提问记录.md'].includes('Moments'));
+  check('自评落第 6 列', v4.files['StudyCoach/记录/提问记录.md'].includes('| 4 |'));
 
   const v5 = new FakeVault();
   const prog = new ProgressService(v5.asService());

@@ -18,6 +18,7 @@ import * as utProfileL2 from './unit/profileL2.test';
 import * as utReviewSheet from './unit/reviewsheet.test';
 import * as utSvgChart from './unit/svgchart.test';
 import * as utDiff from './unit/diff.test';
+import * as utTop3 from './unit/top3.test';
 import * as fvtSession from './fvt/session.test';
 import * as fvtDataflow from './fvt/dataflow.test';
 import * as fvtIelts from './fvt/ielts.test';
@@ -42,6 +43,7 @@ async function main(): Promise<void> {
   await utReviewSheet.run();
   await utSvgChart.run();
   await utDiff.run();
+  await utTop3.run();
   await fvtSession.run();
   await fvtDataflow.run();
   await fvtIelts.run();

@@ -12,6 +12,7 @@ export interface QuestionTagRow {
   topic: string;
   confusion: string;
   depth: string;
+  selfRating: string;
 }
 
 export interface TopicHeat {
@@ -53,7 +54,7 @@ export class InsightEngine {
     if (!content) return [];
     return parseTable(content)
       .filter(r => r.length >= 5 && r[0] !== '日期' && parseDate(r[0]))
-      .map(r => ({ date: r[0], subject: r[1], topic: r[2], confusion: r[3], depth: r[4] }));
+      .map(r => ({ date: r[0], subject: r[1], topic: r[2], confusion: r[3], depth: r[4], selfRating: r[5] ?? '' }));
   }
 
   private withinDays(date: string, days: number): boolean {

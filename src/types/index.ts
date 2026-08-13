@@ -98,6 +98,7 @@ export interface SessionTag {
   topic: string;
   confusion: string;     // 概念不懂 / 会但不熟 / 卡在某步 / 术语表达 / 作文批改 / 其他
   depth: string;         // 问一句就懂 / 需要完整引导
+  selfRating?: string;   // 结题自评 1–5（Q2 埋点，可缺省）
 }
 
 // ─── 随手记提取结果 ─────────────────────────────────────────

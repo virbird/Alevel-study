@@ -28,6 +28,7 @@ import type { ImagePart } from '../types';
 import { ContextCompressor } from '../services/ContextCompressor';
 import { estimateTokens, formatTokens } from '../utils/tokens';
 import { mountSparkline, mountBars } from '../utils/svgChart';
+import { pickTop3 } from '../utils/top3';
 import { AnswerReviewModal } from './AnswerReviewModal';
 
 export const VIEW_TYPE = 'alevel-study-coach-view';
@@ -247,6 +248,27 @@ export class MainView extends ItemView {
 
     // 0. 批改任务卡片（首页顶部，后台任务不阻塞操作）
     this.renderGradingTask(el);
+
+    // 0.5 本周三件事（Q3 行动清单，优先级高于建议流；全空不渲染）
+    const [dueTop, wrongsAll] = await Promise.all([this.plugin.errorLog.dueEntries(), this.plugin.wrongAnswers.load()]);
+    const top3 = pickTop3(dueTop, wrongsAll.filter(w => w.status === '未订正'));
+    if (top3.length) {
+      const card = el.createDiv({ cls: 'asc-card' });
+      card.createDiv({ text: t('home.top3.title'), cls: 'asc-card-title' });
+      for (const p of top3) {
+        const row = card.createDiv({ cls: 'asc-row' });
+        const reason = p.kind === 'log'
+          ? t('home.top3.reason.log', { n: p.recurrence, d: p.days })
+          : t('home.top3.reason.wrong', { d: p.days });
+        const subj = p.kind === 'log' ? p.log!.subject : p.wrong!.subject;
+        const topic = p.kind === 'log' ? p.log!.topic : p.wrong!.topic;
+        row.createSpan({ text: t('home.top3.item', { subject: subj, topic, reason }) });
+        row.createEl('button', { text: t('home.top3.go'), cls: 'asc-btn asc-btn-cta asc-btn-small' }).addEventListener('click', () => {
+          if (p.kind === 'log') void this.startVariantDrill(p.log!);
+          else void this.startWrongRedo(p.wrong!);
+        });
+      }
+    }
 
     // 1. 待处理建议卡片（有才显示，最多 3 张）
     if (pending.length) {
@@ -1663,7 +1685,7 @@ export class MainView extends ItemView {
         for (const h of t('records.cols.questions').split('|')) thead.createEl('th', { text: h });
         for (const t of tags) {
           const tr = tt.createEl('tr');
-          for (const cell of [t.date, t.subject, t.topic, t.confusion, t.depth]) tr.createEl('td', { text: cell });
+          for (const cell of [t.date, t.subject, t.topic, t.confusion, t.depth, t.selfRating || '-']) tr.createEl('td', { text: cell });
         }
       }
     }
@@ -2087,10 +2109,18 @@ export class MainView extends ItemView {
     this.mode = SUBJECT_TO_MODE[w.subject] ?? 'Maths';
     this.tab = 'coach';
     await this.startSession(false);
+    // Q1：原会话存档存在 → 挂为附件走盲重做三步流；否则降级旧预填
+    const sessPath = w.session ? `${ROOT}/会话/${w.session}.md` : '';
+    const hasSess = !!sessPath && this.app.vault.getAbstractFileByPath(sessPath) instanceof TFile;
+    if (hasSess && !this.attachments.some(a => a.path === sessPath)) {
+      this.attachments.push({ path: sessPath, name: `${w.session}.md` });
+    }
     this.render();
     const input = this.bodyEl.querySelector<HTMLTextAreaElement>('.asc-input-bar textarea');
     if (input) {
-      input.value = t('wrong.prefill', { topic: w.topic, err: w.myError || '-', sess: w.session ? t('wrong.prefill.sess', { session: w.session }) : '' });
+      input.value = hasSess
+        ? t('wrong.redo.blind', { topic: w.topic })
+        : t('wrong.prefill', { topic: w.topic, err: w.myError || '-', sess: w.session ? t('wrong.prefill.sess', { session: w.session }) : '' });
       input.focus();
     }
   }

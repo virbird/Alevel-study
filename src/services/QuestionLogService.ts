@@ -112,7 +112,7 @@ export class QuestionLogService {
   constructor(private vault: VaultService) {}
 
   async appendTag(tag: SessionTag): Promise<void> {
-    const row = renderRow([tag.date, tag.subject, tag.topic, tag.confusion, tag.depth]);
+    const row = renderRow([tag.date, tag.subject, tag.topic, tag.confusion, tag.depth, tag.selfRating ?? '']);
     await this.vault.appendTableRow(QUESTION_LOG_PATH, row);
   }
 }
