@@ -4,7 +4,7 @@ import type { WrongAnswerEntry } from './WrongAnswerService';
 import { todayStr, daysBetween, parseDate } from '../utils/date';
 import type { VaultService } from './VaultService';
 import { ROOT } from './VaultService';
-import type { InsightEngine } from './InsightEngine';
+import type { InsightEngine, CalibrationFlag } from './InsightEngine';
 
 export const PROFILE_L2_PATH = `${ROOT}/记录/weakness-profile.md`;
 const MANUAL_HEADING = '## 人工备注';
@@ -20,6 +20,8 @@ export class ProfileL2Service {
 
   /** 生成并写盘整份画像，返回内容 */
   async generate(entries: ErrorLogEntry[], terms: TermEntry[], was: WrongAnswerEntry[]): Promise<string> {
+    // Q2 自评校准旗标：整份画像计算一次，按科目分发到各节尾
+    const flags = this.engine.calibrationFlags(await this.engine.loadQuestionTags(), entries);
     const subjects = [...new Set([
       ...entries.map(e => e.subject),
       ...terms.map(x => x.subject),
@@ -31,6 +33,7 @@ export class ProfileL2Service {
         entries.filter(e => e.subject === s),
         terms.filter(x => x.subject === s),
         was.filter(w => w.subject === s),
+        flags.filter(f => f.subject === s),
       );
       if (lines.length) secs.push(`## ${s}\n${lines.join('\n')}`);
     }
@@ -44,8 +47,8 @@ export class ProfileL2Service {
     return content;
   }
 
-  /** 单科目画像行（≤6 行，带证据 ID 回链） */
-  private sectionFor(es: ErrorLogEntry[], ts: TermEntry[], ws: WrongAnswerEntry[]): string[] {
+  /** 单科目画像行（内容行 ≤6，校准行附于节尾带证据日期；画像正文为数据文件保持中文） */
+  private sectionFor(es: ErrorLogEntry[], ts: TermEntry[], ws: WrongAnswerEntry[], flags: CalibrationFlag[]): string[] {
     const lines: string[] = [];
     const codes = this.engine.codeCountsRange(es, -1, 30).slice(0, 3);
     if (codes.length) {
@@ -59,7 +62,15 @@ export class ProfileL2Service {
     if (unstable.length) lines.push(`- 术语未稳定 ${unstable.length} 个（${unstable.slice(0, 3).map(x => x.term).join('、')}）`);
     const open = ws.filter(w => w.status === '未订正');
     if (open.length) lines.push(`- 错题未订正 ${open.length} 条（证据：${open.slice(0, 4).map(w => w.id).join(' ')}）`);
-    return lines.slice(0, 6);
+    const kept = lines.slice(0, 6);
+    // Q2 自评校准：过度自信码优先复习；低估码仅展示不催练
+    for (const f of flags) {
+      const ev = f.evidence.join(' ');
+      kept.push(f.kind === 'over'
+        ? `- 校准：过度自信 ${f.code}（自评均 ${f.avg.toFixed(1)}，近30天出现 ${f.relapses} 次，证据：${ev}）`
+        : `- 校准：低估 ${f.code}（自评均 ${f.avg.toFixed(1)}，未见复发，证据：${ev}）`);
+    }
+    return kept;
   }
 
   /** 读取科目 H2 节（不含标题行）；无则空串 */

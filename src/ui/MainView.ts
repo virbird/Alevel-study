@@ -1852,7 +1852,7 @@ export class MainView extends ItemView {
     const sheetSrc = {
       terms: drillTerms.map(x => ({ term: x.term, subject: x.subject, status: x.status })),
       points: due.filter(e => e.recurrence >= 2).map(e => ({ id: e.id, subject: e.subject, topic: e.topic, code: e.code, recurrence: e.recurrence })),
-      wrongs: openWas.map(w => ({ id: w.id, topic: w.topic, myError: w.myError, session: w.session })),
+      wrongs: openWas.map(w => ({ id: w.id, subject: w.subject, topic: w.topic, myError: w.myError, session: w.session })),
       exprs: exprDue.map(x => ({ expr: x.expr, type: x.type })),
     };
     const fpFile = await this.plugin.reviewSheet.readFingerprint();
@@ -2133,7 +2133,7 @@ export class MainView extends ItemView {
     await this.plugin.reviewSheet.generate({
       terms: terms.filter(x => x.status !== '已稳定').map(x => ({ term: x.term, subject: x.subject, status: x.status })),
       points: due.filter(e => e.recurrence >= 2).map(e => ({ id: e.id, subject: e.subject, topic: e.topic, code: e.code, recurrence: e.recurrence })),
-      wrongs: openWas.map(w => ({ id: w.id, topic: w.topic, myError: w.myError, session: w.session })),
+      wrongs: openWas.map(w => ({ id: w.id, subject: w.subject, topic: w.topic, myError: w.myError, session: w.session })),
       exprs: exprDue.map(x => ({ expr: x.expr, type: x.type })),
     });
     new Notice(t('review.sheet.done', { path: '记录/review-sheet.md' }));

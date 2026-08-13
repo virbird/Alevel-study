@@ -57,15 +57,23 @@ export class StatsService {
   }
 
   /** 周快照：追加一行计数（P1/P2/P4 指标周环比数据源） */
-  async appendSnapshot(s: { unresolved: number; unstable: number; openWrongs: number; dueExprs: number }): Promise<void> {
+  async appendSnapshot(s: { unresolved: number; unstable: number; openWrongs: number; dueExprs: number; overconfident: number }): Promise<void> {
     const heading = '## 周快照';
-    const row = `| ${todayStr()} | ${s.unresolved} | ${s.unstable} | ${s.openWrongs} | ${s.dueExprs} |`;
-    const content = (await this.vault.read(STATS_PATH)) ?? '# 统计分析\n';
+    const snapHeader = '| 日期 | 未消除数 | 未稳定术语数 | 未订正错题数 | 到期表达数 | 过度自信码数 |';
+    const row = `| ${todayStr()} | ${s.unresolved} | ${s.unstable} | ${s.openWrongs} | ${s.dueExprs} | ${s.overconfident} |`;
+    let content = (await this.vault.read(STATS_PATH)) ?? '# 统计分析\n';
     if (!content.includes(heading)) {
       await this.vault.write(STATS_PATH,
         content.replace(/\s*$/, '') +
-        `\n\n${heading}\n\n| 日期 | 未消除数 | 未稳定术语数 | 未订正错题数 | 到期表达数 |\n|---|---|---|---|---|\n${row}\n`);
+        `\n\n${heading}\n\n${snapHeader}\n|---|---|---|---|---|---|\n${row}\n`);
       return;
+    }
+    // 宽容迁移：旧 5 列表升级表头/分隔行，旧数据行补 '-'
+    if (!content.includes('过度自信码数')) {
+      content = content
+        .replace('| 日期 | 未消除数 | 未稳定术语数 | 未订正错题数 | 到期表达数 |', snapHeader)
+        .replace('|---|---|---|---|---|', '|---|---|---|---|---|---|')
+        .replace(/^(\| \d{4}-\d{2}-\d{2} \|(?:[^|\n]*\|){4})$/gm, '$1 - |');
     }
     await this.vault.write(STATS_PATH, content.replace(/\s*$/, '') + `\n${row}\n`);
   }

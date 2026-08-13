@@ -51,6 +51,22 @@ export async function run(): Promise<void> {
   const unstableTerms = Array.from({ length: 8 }, (_, i) => ({ term: `term${i}`, subject: '', bookDef: '', parts: '', missed: '', wrongWord: '', status: '未稳定' as const }));
   check('术语未稳定 ≥8 出候选', (await engine.generateCandidates([], unstableTerms)).some(c => c.kind === '术语未稳定'));
 
+  section('UT: InsightEngine 自评校准旗标（Q2 分析）');
+  const mkTag = (rating: string, topic = 'Elasticity', date = todayStr()): { date: string; subject: string; topic: string; confusion: string; depth: string; selfRating: string } =>
+    ({ date, subject: 'Econ', topic, confusion: '其他', depth: '问一句就懂', selfRating: rating });
+  const eOver = [mkEntry({ code: 'E', topic: 'Elasticity' }), mkEntry({ id: '002', code: 'E', topic: 'Elasticity' })];
+  const overTags = [mkTag('5'), mkTag('4'), mkTag('4')];
+  const fOver = engine.calibrationFlags(overTags, eOver);
+  check('自评高+复发→过度自信', fOver.length === 1 && fOver[0].kind === 'over' && fOver[0].code === 'E');
+  check('均值与证据日期', fOver[0].avg > 4 && fOver[0].evidence.length === 3 && fOver[0].subject === 'Econ');
+  check('均值 <4 不触发', engine.calibrationFlags([mkTag('4'), mkTag('4'), mkTag('3')], eOver).length === 0);
+  check('复发仅 1 次不触发', engine.calibrationFlags(overTags, eOver.slice(0, 1)).length === 0);
+  check('样本 2 条不触发', engine.calibrationFlags(overTags.slice(0, 2), eOver).length === 0);
+  check('考点名大小写不敏感关联', engine.calibrationFlags([mkTag('5', 'elasticity'), mkTag('4', 'ELASTICITY'), mkTag('4')], eOver).length === 1);
+  const fUnder = engine.calibrationFlags([mkTag('2', 'Taxation'), mkTag('1', 'Taxation'), mkTag('2', 'Taxation')], [mkEntry({ code: 'X', topic: 'Taxation' })]);
+  check('自评低+无复发→低估（仅展示）', fUnder.length === 1 && fUnder[0].kind === 'under');
+  check('无效自评（空/越界）忽略', engine.calibrationFlags([mkTag(''), mkTag('9'), mkTag('abc')], eOver).length === 0);
+
   section('UT: StatsService 区块更新与本期专项');
   const v2 = new FakeVault({ seed: { 'StudyCoach/记录/统计分析.md': '# 统计分析\n\n## 手写区块\n\n学生自己写的内容\n' } });
   const stats = new StatsService(v2.asService(), engine);
@@ -65,6 +81,18 @@ export async function run(): Promise<void> {
   await stats.runQuestionWeekly();
   const content2 = v2.files['StudyCoach/记录/统计分析.md'];
   eq('重复运行不复制区块', content2.split('## 提问热点').length, 2);
+
+  // Q2：周快照加「过度自信码数」列；旧 5 列表宽容迁移
+  await stats.appendSnapshot({ unresolved: 3, unstable: 1, openWrongs: 2, dueExprs: 0, overconfident: 1 });
+  const snap = v2.files['StudyCoach/记录/统计分析.md'];
+  check('新建周快照为六列表', snap.includes('| 日期 | 未消除数 | 未稳定术语数 | 未订正错题数 | 到期表达数 | 过度自信码数 |'));
+  check('快照行含过度自信码数', snap.includes(`| ${todayStr()} | 3 | 1 | 2 | 0 | 1 |`));
+  const v6 = new FakeVault({ seed: { 'StudyCoach/记录/统计分析.md': '# 统计分析\n\n## 周快照\n\n| 日期 | 未消除数 | 未稳定术语数 | 未订正错题数 | 到期表达数 |\n|---|---|---|---|---|\n| 2026-08-01 | 2 | 1 | 1 | 0 |\n' } });
+  const stats6 = new StatsService(v6.asService(), engine);
+  await stats6.appendSnapshot({ unresolved: 1, unstable: 0, openWrongs: 0, dueExprs: 0, overconfident: 0 });
+  const snap6 = v6.files['StudyCoach/记录/统计分析.md'];
+  check('旧表升级六列表头', snap6.includes('过度自信码数'));
+  check('旧数据行补 -', snap6.includes('| 2026-08-01 | 2 | 1 | 1 | 0 | - |'));
 
   section('UT: SuggestionService 状态机');
   const v3 = new FakeVault();

@@ -41,6 +41,16 @@ export interface RadarData {
   dueCount: number;
 }
 
+/** Q2 自评校准旗标：按失分码聚合的元认知盲区信号 */
+export interface CalibrationFlag {
+  code: string;
+  kind: 'over' | 'under';   // over=过度自信（自评高但复发）；under=低估（自评低但无复发，仅展示不催练）
+  avg: number;              // 自评均值
+  relapses: number;         // 该码近 30 天出现次数（含初次记录）
+  subject: string;          // 关联会话最高频科目
+  evidence: string[];       // 证据日期（最近 3 条自评会话）
+}
+
 /**
  * 弱点分析引擎：三源交叉（提问记录 × error log × 术语状态）。
  * 全部纯本地统计，不调 LLM；只在学生同意生成学习建议时才调一次 LLM。
@@ -99,6 +109,42 @@ export class InsightEngine {
       map.set(code, (map.get(code) ?? 0) + 1);
     }
     return [...map.entries()].map(([code, count]) => ({ code, count })).sort((a, b) => b.count - a.count);
+  }
+
+  /**
+   * Q2 自评校准（元认知）：按失分码聚合结题自评与实际复发。
+   * tag 经考点名（大小写不敏感）关联到失分码；固定判据：
+   * - 样本门槛：该码带自评会话 ≥3 条，不足不出旗标（考点级样本过稀，码级才有统计意义）；
+   * - 过度自信：自评均值 ≥4 且该码近 30 天出现 ≥2 次——自评高但复发，元认知盲区，优先复习；
+   * - 低估：自评均值 ≤2 且近 30 天仅 1 次记录（从未复发）——仅展示，不催练。
+   */
+  calibrationFlags(tags: QuestionTagRow[], entries: ErrorLogEntry[]): CalibrationFlag[] {
+    const byCode = new Map<string, { ratings: number[]; dates: string[]; subjects: Map<string, number> }>();
+    for (const tag of tags) {
+      const n = Number(tag.selfRating);
+      if (!tag.selfRating || !Number.isFinite(n) || n < 1 || n > 5 || !tag.topic) continue;
+      const hit = entries.find(e => e.topic && e.topic.trim().toLowerCase() === tag.topic.trim().toLowerCase());
+      if (!hit || !hit.code) continue;
+      const key = hit.code.toUpperCase();
+      const cur = byCode.get(key) ?? { ratings: [], dates: [], subjects: new Map<string, number>() };
+      cur.ratings.push(n);
+      cur.dates.push(tag.date);
+      if (tag.subject) cur.subjects.set(tag.subject, (cur.subjects.get(tag.subject) ?? 0) + 1);
+      byCode.set(key, cur);
+    }
+    const out: CalibrationFlag[] = [];
+    for (const [code, cur] of byCode) {
+      if (cur.ratings.length < 3) continue;
+      const avg = cur.ratings.reduce((a, b) => a + b, 0) / cur.ratings.length;
+      const recent = entries.filter(
+        e => (e.code || '').toUpperCase() === code && parseDate(e.date) !== null && daysBetween(e.date, todayStr()) <= 30,
+      ).length;
+      const subject = [...cur.subjects.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+      const evidence = [...cur.dates].sort().slice(-3);
+      if (avg >= 4 && recent >= 2) out.push({ code, kind: 'over', avg, relapses: recent, subject, evidence });
+      else if (avg <= 2 && recent <= 1) out.push({ code, kind: 'under', avg, relapses: recent, subject, evidence });
+    }
+    return out.sort((a, b) => (a.kind === b.kind ? b.avg - a.avg : a.kind === 'over' ? -1 : 1));
   }
 
   async confusionDist(windowDays = 14): Promise<{ confusion: string; count: number }[]> {

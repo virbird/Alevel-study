@@ -315,13 +315,14 @@ export default class ALevelStudyCoachPlugin extends Plugin {
         await this.stats.runQuestionWeekly();
         this.settings.lastWeeklyStats = wk;
         statsChanged = true;
-        // 周快照：P1/P2/P4 指标周环比数据源
-        const [termsSnap, wasSnap, exprSnap] = await Promise.all([this.terms.load(), this.wrongAnswers.load(), this.expressions.due()]);
+        // 周快照：P1/P2/P4 指标周环比数据源；Q2 过度自信码数进列
+        const [termsSnap, wasSnap, exprSnap, tagsSnap] = await Promise.all([this.terms.load(), this.wrongAnswers.load(), this.expressions.due(), this.engine.loadQuestionTags()]);
         await this.stats.appendSnapshot({
           unresolved: entries.filter(e => e.status === '未消除').length,
           unstable: termsSnap.filter(x => x.status === '未稳定').length,
           openWrongs: wasSnap.filter(w => w.status === '未订正').length,
           dueExprs: exprSnap.length,
+          overconfident: this.engine.calibrationFlags(tagsSnap, entries).filter(f => f.kind === 'over').length,
         });
       }
       const lastBi = this.settings.lastBiweeklyStats;

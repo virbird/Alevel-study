@@ -3,15 +3,27 @@ import { section, check, FakeVault } from '../harness';
 import { ProfileL2Service, PROFILE_L2_PATH } from '../../src/services/ProfileL2Service';
 import { InsightEngine } from '../../src/services/InsightEngine';
 import { ErrorLogService } from '../../src/services/ErrorLogService';
+import { QUESTION_LOG_PATH } from '../../src/services/QuestionLogService';
 import { seedLog } from './errorlog.test';
 import { todayStr, addDays } from '../../src/utils/date';
 
 export async function run(): Promise<void> {
   section('UT: ProfileL2Service 弱点画像');
-  const v = new FakeVault({ seed: { 'StudyCoach/记录/error-log.md': seedLog([
-    `| 001 | ${todayStr()} | Maths | AS | Moments | 计算 | LK | 忘乘力臂 | 注明力臂 | | 2 | 未消除 | ${addDays(todayStr(), 7)} |`,
-    `| 002 | ${todayStr()} | Maths | AS | Moments | 计算 | LK | 又忘力臂 | 注明力臂 | | 1 | 未消除 | ${addDays(todayStr(), 7)} |`,
-  ]) } });
+  const v = new FakeVault({ seed: {
+    'StudyCoach/记录/error-log.md': seedLog([
+      `| 001 | ${todayStr()} | Maths | AS | Moments | 计算 | LK | 忘乘力臂 | 注明 力臂 | | 2 | 未消除 | ${addDays(todayStr(), 7)} |`,
+      `| 002 | ${todayStr()} | Maths | AS | Moments | 计算 | LK | 又忘力臂 | 注明 力臂 | | 1 | 未消除 | ${addDays(todayStr(), 7)} |`,
+    ]),
+    // Q2：带自评的提问记录，满足 LK 码样本门槛 → 过度自信旗标进画像
+    [QUESTION_LOG_PATH]: [
+      '# 提问记录', '',
+      '| 日期 | 科目 | 考点(EN) | 困惑类型 | 求助深度 | 自评 |',
+      '|------|------|---------|---------|---------|------|',
+      `| ${todayStr()} | Maths | Moments | 卡在某步 | 问一句就懂 | 5 |`,
+      `| ${todayStr()} | Maths | Moments | 卡在某步 | 问一句就懂 | 4 |`,
+      `| ${todayStr()} | Maths | Moments | 卡在某步 | 问一句就懂 | 4 |`,
+    ].join('\n') + '\n',
+  } });
   const engine = new InsightEngine(v.asService());
   const p2 = new ProfileL2Service(v.asService(), engine);
   const entries = await new ErrorLogService(v.asService()).load();
@@ -20,6 +32,7 @@ export async function run(): Promise<void> {
   check('按科目分节', content.includes('## Maths'));
   check('复发热点带证据 ID 回链', content.includes('复发 2 次（证据：001）'));
   check('高频失分码行', content.includes('LK ×2'));
+  check('Q2 校准行进科目节尾（过度自信带均值/复发/证据）', content.includes('校准：过度自信 LK（自评均 4.3，近30天出现 2 次，证据：'));
   check('frontmatter updated', content.includes(`updated: ${todayStr()}`));
 
   // 人工备注保留
