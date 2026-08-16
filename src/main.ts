@@ -49,6 +49,14 @@ export interface CoachPluginSettings {
   compressThreshold: number;
   /** 语音训练（阿里云 NLS；未配置时口语训练为文字模式） */
   voice: VoiceSettings;
+  /** 未结束会话槽位持久化：重启/插件重载后恢复现场（图片不持久化，防 data.json 膨胀） */
+  coachSlots: Record<string, {
+    sessionId: string;
+    messages: { role: 'user' | 'assistant'; content: string }[];
+    savedCount: number;
+    sessionTagged: boolean;
+    attachments?: { path: string; name: string }[];
+  }>;
 }
 
 /** 批改任务状态：后台运行，雅思页签内展示进度与结果，不阻塞其他操作 */
@@ -73,6 +81,7 @@ const DEFAULT_SETTINGS: CoachPluginSettings = {
   contextWindow: 128000,
   compressThreshold: 80,
   voice: { enabled: false, aliyunAccessKeyId: '', aliyunAccessKeySecret: '', aliyunAppKey: '', ttsVoice: 'annie', autoPlayTts: true, saveRecordings: false },
+  coachSlots: {},
 };
 
 export default class ALevelStudyCoachPlugin extends Plugin {

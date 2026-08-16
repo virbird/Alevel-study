@@ -1,5 +1,6 @@
 import { ItemView, MarkdownRenderer, Notice, Platform, TFile, WorkspaceLeaf } from 'obsidian';
 import type ALevelStudyCoachPlugin from '../main';
+import type { CoachPluginSettings } from '../main';
 import { t, statusLabel, modeLabel, kindLabel, subjectLabel, progressBadge } from '../i18n';
 import { SUBJECTS } from '../types';
 import type { ChatMessage, ErrorLogEntry, ModeKey, SessionTag } from '../types';
@@ -82,8 +83,8 @@ export class MainView extends ItemView {
   private pendingFeedback: ReviewFeedback | null = null;
   /** 复习/记录共用的展开状态（默认：有内容的区展开、空区收起） */
   private expanded: Record<string, boolean> = {};
-  /** 按科目隔离的会话槽：切科目时保存当前会话，切回时恢复 */
-  private slots: Partial<Record<string, { sessionId: string; messages: ChatMessage[]; savedCount: number; sessionTagged: boolean }>> = {};
+  /** 按科目隔离的会话槽：切科目时保存当前会话，切回时恢复；持久化到 data.json 供重启后恢复 */
+  private slots: Partial<Record<string, { sessionId: string; messages: ChatMessage[]; savedCount: number; sessionTagged: boolean; attachments: { path: string; name: string }[] }>> = {};
   /** 独立思考计时器（提示词门槛的产品硬约束，仅会话内可用） */
   private timerDeadline = 0;
   private timerMinutes = 0;
@@ -143,7 +144,11 @@ export class MainView extends ItemView {
         lines.push(`## ${m.role === 'user' ? '学生' : '教练'}`, '', m.content, '');
       }
       await this.plugin.vaultService.append(path, lines.join('\n'));
+      slot.savedCount = slot.messages.length; // 存档进度同步，重启恢复后不会重复写存档
     }
+    // 持久化未结束会话：重启后恢复现场（当前会话的 savedCount 已随上方存档更新）
+    this.saveCurrentSlot();
+    await this.persistSlots();
     this.slots = {};
     if (this.timerInterval !== null) {
       window.clearInterval(this.timerInterval);
@@ -444,10 +449,22 @@ export class MainView extends ItemView {
     // 图片识别进度卡片（有才显示，后台任务不阻塞操作）
     this.renderImgRecTask(el);
 
-    // 当前科目无未结束会话 → 自动新开会话（无需点按钮；无交互则不会被记录）
+    // 当前科目无进行中会话 → 先尝试从槽位恢复（含重启后从 data.json 懒加载），否则自动新开
     if (!this.systemPrompt && !this.startingSession) {
       this.startingSession = true;
-      void this.startSession(true).finally(() => { this.startingSession = false; });
+      void (async () => {
+        try {
+          if (Object.keys(this.slots).length === 0 && this.plugin.settings.coachSlots) {
+            // 重启/插件重载后内存槽为空：从持久化槽恢复（附件缺省补空）
+            for (const [mode, s] of Object.entries(this.plugin.settings.coachSlots)) {
+              this.slots[mode] = { ...s, attachments: s.attachments ?? [] };
+            }
+          }
+          if (!(await this.restoreSlot(this.mode))) await this.startSession(true);
+        } finally {
+          this.startingSession = false;
+        }
+      })();
     }
 
     // 会话生命周期按钮：会话始终自动存在，按钮只剩「结题」
@@ -993,6 +1010,7 @@ export class MainView extends ItemView {
       waiting = false;
       window.clearInterval(waitTicker);
       this.busy = false;
+      this.saveCurrentSlot(); // 每轮往来同步槽位到磁盘，重启最多丢进行中的一轮
       this.render();
     }
   }
@@ -1092,7 +1110,7 @@ export class MainView extends ItemView {
     }
   }
 
-  /** 把当前未结束的会话存入当前科目槽（切走前调用；无交互的不存，切回时直接新开） */
+  /** 把当前未结束的会话存入当前科目槽（切走前调用；无交互的不存，切回时直接新开）并同步落盘 */
   private saveCurrentSlot(): void {
     if (this.systemPrompt && this.messages.length && this.messages.some(m => m.role === 'user')) {
       this.slots[this.mode] = {
@@ -1100,8 +1118,45 @@ export class MainView extends ItemView {
         messages: this.messages,
         savedCount: this.savedCount,
         sessionTagged: this.sessionTagged,
+        attachments: [...this.attachments],
       };
     }
+    void this.persistSlots();
+  }
+
+  /** 槽位持久化到 data.json：重启/插件重载后恢复现场。图片（base64）不持久化防文件膨胀，
+   * 恢复后历史轮次的图片上下文缺失（文字全量保留，且已增量存档到 vault） */
+  private async persistSlots(): Promise<void> {
+    const out: CoachPluginSettings['coachSlots'] = {};
+    for (const [mode, slot] of Object.entries(this.slots)) {
+      if (!slot) continue;
+      out[mode] = {
+        sessionId: slot.sessionId,
+        messages: slot.messages.map(m => ({ role: m.role, content: m.content })),
+        savedCount: slot.savedCount,
+        sessionTagged: slot.sessionTagged,
+        attachments: slot.attachments,
+      };
+    }
+    this.plugin.settings.coachSlots = out;
+    try {
+      await this.plugin.saveSettings();
+    } catch { /* 持久化失败不阻塞 UI */ }
+  }
+
+  /** 恢复指定科目的未结束会话槽（切科目/重启共用）；无槽返回 false */
+  private async restoreSlot(mode: ModeKey): Promise<boolean> {
+    const slot = this.slots[mode];
+    if (!slot) return false;
+    delete this.slots[mode];
+    this.sessionId = slot.sessionId;
+    this.messages = slot.messages;
+    this.savedCount = slot.savedCount;
+    this.sessionTagged = slot.sessionTagged;
+    this.attachments = [...slot.attachments];
+    await this.rebuildSystemPrompt();
+    this.render();
+    return true;
   }
 
   /** 切换科目：当前会话存入原科目槽，目标科目有未结束会话则恢复，否则新开 */
@@ -1116,20 +1171,8 @@ export class MainView extends ItemView {
     this.mode = newMode;
     this.plugin.settings.lastCoachMode = newMode;
     await this.plugin.saveSettings();
-    const slot = this.slots[newMode];
-    if (slot) {
-      // 恢复该科目未结束的会话
-      delete this.slots[newMode];
-      this.sessionId = slot.sessionId;
-      this.messages = slot.messages;
-      this.savedCount = slot.savedCount;
-      this.sessionTagged = slot.sessionTagged;
-      await this.rebuildSystemPrompt();
-      this.render();
-    } else {
-      // 无未结束会话（从未开过或都已结题）→ 新开会话（含本地开场）
-      await this.startSession(true);
-    }
+    // 目标科目有未结束会话则恢复，否则新开（含本地开场）
+    if (!(await this.restoreSlot(newMode))) await this.startSession(true);
     return true;
   }
 
@@ -1153,6 +1196,7 @@ export class MainView extends ItemView {
     this.pendingImages = [];
     this.sessionSummary = '';
     delete this.slots[this.mode];
+    void this.persistSlots(); // 已结题的槽从磁盘移除，重启不再恢复
     new Notice(t('coach.closed'));
     // 自动续开新会话（无需手动点按钮）
     await this.startSession(true);
