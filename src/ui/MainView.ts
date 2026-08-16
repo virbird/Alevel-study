@@ -965,6 +965,8 @@ export class MainView extends ItemView {
       }
       if (!raw.trim()) throw new Error(t('coach.emptyReply'));
       this.messages.push({ role: 'assistant', content: raw });
+      // 副作用（会话打标→提问记录）对所有回复生效；结题回复的 sessionTag 也在这里处理，不得被下方结题分支跳过
+      await this.handleReplySideEffects(raw);
       // 结题回复完成：先渲染入库确认卡片；有未处理确认则延迟关闭，否则存档并关闭会话
       if (this.pendingClose) {
         this.pendingClose = false;
@@ -977,7 +979,6 @@ export class MainView extends ItemView {
         }
         return;
       }
-      await this.handleReplySideEffects(raw);
       // 口语 + 语音已配置：考官回复自动播报（可随时打断；失败不影响文字流）
       if (this.mode === 'speaking' && (await this.plugin.voiceReady())) {
         const vcfg = await this.plugin.loadVoiceConfig();
@@ -1171,6 +1172,7 @@ export class MainView extends ItemView {
           topic: tag.topic,
           confusion: tag.confusion ?? '其他',
           depth: tag.depth ?? '问一句就懂',
+          selfRating: tag.selfRating ?? '',
         });
       }
     }
